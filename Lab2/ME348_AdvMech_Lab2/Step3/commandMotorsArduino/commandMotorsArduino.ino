@@ -18,7 +18,6 @@ int rightMotor;
 }   
 
 void loop() {
-
   recvWithStartEndMarkers();
 
 

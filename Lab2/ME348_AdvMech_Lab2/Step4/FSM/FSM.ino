@@ -1,27 +1,7 @@
 #include <AStar32U4Motors.h>
-
+#include <AStar32U4.h>
 AStar32U4Motors m; //read the documentation of this library to understand what functions to use to drive the motors and how to use them
 
-const uint8_t BMP_FR 0;
-const uint8_t BMP_L 1;
-const uint8_t BMP_MR 4;
-const uint8_t BMP_ML 5;
-const uint8_t BMP_L 7;
-const uint8_t BMP_FL 8;
-
-
-enum states {
-    NONE,
-    KEEPDRIVING,
-    HEADON,
-    AVOIDRIGHT,
-    AVOIDLEFT,
-}
-
-states prior_state state;
-
-uint32_t initialT;
-uint16_t counter
 
 
 int leftMotor;
@@ -30,7 +10,31 @@ int FAST = 150;
 int STOP = 0;
 int MED = 75;
 
-uint32_t INCREMENT
+const uint8_t BMP_FR = 0;
+const uint8_t BMP_R = 1;
+const uint8_t BMP_MR = 4;
+const uint8_t BMP_ML = 5;
+const uint8_t BMP_L = 7;
+const uint8_t BMP_FL = 8;
+
+
+
+enum states {
+    NONE,
+    KEEPDRIVING,
+    HEADON,
+    AVOIDRIGHT,
+    AVOIDLEFT,
+};
+
+
+states prior_state, state;
+uint32_t initialT;
+uint16_t counter;
+
+
+
+uint32_t INCREMENT;
 
 const byte numChars = 32;
 char receivedChars[numChars];
@@ -38,16 +42,88 @@ char tempChar[numChars]; // temporary array used for parsing
 
 boolean newData = false;
 
-int FR = 0;
-int R = 0;
-int MR = 0;
+bool FR = digitalRead(BMP_FR) == HIGH;
+bool R = digitalRead(BMP_R)  == HIGH;
+bool MR = digitalRead(BMP_MR) == HIGH;
 
-int ML = 0;
-int L = 0;
-int FL =0;
+bool ML = digitalRead(BMP_ML) == HIGH;
+bool L = digitalRead(BMP_L) == HIGH;
+bool FL = digitalRead(BMP_FL) == HIGH;
 
 
-//=====================================================
+
+void keepdriving(){
+  ledGreen(1);
+  if (state != prior_state) {
+    prior_state = state;
+    leftMotor = FAST;
+    rightMotor = FAST;
+    CommandMotors();
+    stateChecker();
+    
+  }
+}
+
+void headon(){
+  if (state != prior_state) {
+    ledRed(1);
+    intialT = millis();
+    prior_state = state;
+    leftMotor = -MED;
+    rightMotor = -MED;
+    CommandMotors();
+    stateChecker(); 
+  t = millis();
+  if (t > (initialT + INCREMENT))
+    state = KEEPDRIVING;
+    ledRed(0); 
+  }  
+}
+
+void avoidright(){
+  if (state != prior_state) {
+    ledYellow(1);
+    intialT = millis();
+    prior_state = state;
+    leftMotor = STOP;
+    rightMotor = FAST;
+    CommandMotors();
+    stateChecker(); 
+  t = millis();
+  if (t > (initialT + INCREMENT))
+    state = KEEPDRIVING;
+    ledYellow(0); 
+  }  
+}
+
+void avoidleft(){
+  if (state != prior_state) {
+    ledYellow(1);
+    intialT = millis();
+    prior_state = state;
+    leftMotor = FAST;
+    rightMotor = STOP;
+    CommandMotors();
+    stateChecker(); 
+  t = millis();
+  if (t > (initialT + INCREMENT))
+    state = KEEPDRIVING;
+    ledYellow(0); 
+  }  
+}
+
+void stop(){
+  if (state != prior_state) {
+    ledRed(1);
+    intialT = millis();
+    prior_state = state;
+    leftMotor = STOP;
+    rightMotor = STOP;
+    CommandMotors();
+
+  }  
+}
+
 
 void setup() {
   Serial.begin(115200);
@@ -59,48 +135,12 @@ void setup() {
   pinMode(BMP_L, INPUT_PULLUP);
   pinMode(BMP_FL, INPUT_PULLUP);
 
+  
+
   prior_state = NONE;
   state = KEEPDRIVING
 
 }
-
-//=====================================================
-void keepdriving(){
-  if (state != to prior_state) {
-    prior_state = state;
-    leftMotor = FAST;
-    rightMotor = FAST;
-    CommandMotors()
-    state
-    
-  }
-}
-
-void headon(){
-  if (state != to prior_state) {
-    prior_state = state;
-    
-  }  
-}
-
-void avoidright(){
-  if (state != to prior_state) {
-    prior_state = state;
-  }  
-}
-
-void avoidleft(){
-  if (state != to prior_state) {
-    prior_state = state;
-  }  
-}
-
-void stop(){
-  
-}
-
-
-
 
 
 void loop() {
@@ -135,6 +175,24 @@ void loop() {
           break
         
     }
+
+
+
+
+void stateChecker() {
+  
+  if (FL && L && ML && MR && R && FR) {
+    state = STOP;  
+  } else if (ML && MR) {
+    state == HEADON
+  } else if ( FL || L || ML ) {
+    state == AVOIDLEFT
+  } else if (FR || R || MR) {
+    state == AVOIDRIGHT
+  }
+    
+}
+
 
 // ************************************************************
     
@@ -213,57 +271,20 @@ rightMotor = atoi(strIndexer);
 
 
 
-void stateChecker() {
-  
-}
 
-//============================================
-//void SendBumpData(){
-//  
-//  x=digitalRead(0);
-//  y=digitalRead(1);
-//  z=digitalRead(4);
-//
-//  a=digitalRead(5);
-//  b=digitalRead(7);
-//  c=digitalRead(8);
-//  
-//
-//  Serial.print(x);
-//  Serial.print(',');
-//  Serial.print(y);
-//  Serial.print(',');
-//  Serial.print(z);
-//  Serial.print(',');
-//  Serial.print(a);
-//  Serial.print(',');
-//  Serial.print(b);
-//  Serial.print(',');
-//  Serial.println(c);
-//}
 
-//============================================
+
 
 void CommandMotors(){  
 
-  //read the documentation for the functions that drive the motors in the astar library
-
   m.setM1Speed(rightMotor);
   m.setM2Speed(leftMotor);
-  //uncomment to drive motors
+
 }
-
-
-
-
 
 
 
 //===========================FUNCTIONS USED FOR TESTING, NOT NEEDED FOR LAB====================================
-
-
-
-
 
 void SendRecievedData(){
   Serial.println(receivedChars);
