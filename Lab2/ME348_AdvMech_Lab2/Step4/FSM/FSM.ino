@@ -71,6 +71,7 @@ void keepdriving(){
     leftMotor = FAST;
     rightMotor = FAST;
     CommandMotors()
+    state
     
   }
 }
@@ -208,6 +209,13 @@ strIndexer = strtok(NULL,",");
 rightMotor = atoi(strIndexer);
 
 }  
+
+
+
+
+void stateChecker() {
+  
+}
 
 //============================================
 //void SendBumpData(){

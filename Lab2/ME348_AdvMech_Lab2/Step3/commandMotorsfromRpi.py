@@ -5,7 +5,7 @@ import numpy as np
 
 from sendStringScript import sendString
 
-String2Send='<150,10>'  #these are my motor commands
+String2Send='<50,100>'  #these are my motor commands <right, left
 
 if __name__ == '__main__':
     ser=serial.Serial("/dev/ttyACM0",115200)
