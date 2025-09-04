@@ -7,7 +7,7 @@ AStar32U4Motors m; //read the documentation of this library to understand what f
 int leftMotor;
 int rightMotor;
 int FAST = 150;
-int STOP = 0;
+int OFF = 0;
 int MED = 75;
 
 const uint8_t BMP_FR = 0;
@@ -17,10 +17,17 @@ const uint8_t BMP_ML = 5;
 const uint8_t BMP_L = 7;
 const uint8_t BMP_FL = 8;
 
+int x=0;
+int y=0;
+int z=0;
+int a=0;
+int b=0;
+int c=0;
 
 
 enum states {
     NONE,
+    STOP,
     KEEPDRIVING,
     HEADON,
     AVOIDRIGHT,
@@ -31,10 +38,11 @@ enum states {
 states prior_state, state;
 uint32_t initialT;
 uint16_t counter;
+uint32_t t;
 
 
 
-uint32_t INCREMENT;
+const unsigned long INCREMENT=1000;
 
 const byte numChars = 32;
 char receivedChars[numChars];
@@ -42,15 +50,36 @@ char tempChar[numChars]; // temporary array used for parsing
 
 boolean newData = false;
 
-bool FR = digitalRead(BMP_FR) == HIGH;
-bool R = digitalRead(BMP_R)  == HIGH;
-bool MR = digitalRead(BMP_MR) == HIGH;
+bool FR; // = digitalRead(BMP_FR) == HIGH;
+bool R; //= digitalRead(BMP_R)  == HIGH;
+bool MR; //= digitalRead(BMP_MR) == HIGH;
 
-bool ML = digitalRead(BMP_ML) == HIGH;
-bool L = digitalRead(BMP_L) == HIGH;
-bool FL = digitalRead(BMP_FL) == HIGH;
+bool ML; //= digitalRead(BMP_ML) == HIGH;
+bool L; //= digitalRead(BMP_L) == HIGH;
+bool FL; //= digitalRead(BMP_FL) == HIGH;
 
+void stateChecker() {
+  
+  if (FL && L && ML && MR && R && FR) {
+    state = STOP;  
+  } else if (ML && MR) {
+    state = HEADON;
+  } else if ( FL || L || ML ) {
+    state = AVOIDLEFT;
+  } else if (FR || R || MR) {
+    state = AVOIDRIGHT;
+  } else {
+    state = KEEPDRIVING;
+  }
+    
+}
 
+void CommandMotors(){  
+
+  m.setM1Speed(rightMotor);
+  m.setM2Speed(leftMotor);
+
+}
 
 void keepdriving(){
   ledGreen(1);
@@ -58,8 +87,10 @@ void keepdriving(){
     prior_state = state;
     leftMotor = FAST;
     rightMotor = FAST;
-    CommandMotors();
+    m.setM1Speed(rightMotor);
+    m.setM2Speed(leftMotor);
     stateChecker();
+    ledGreen(0);
     
   }
 }
@@ -67,14 +98,16 @@ void keepdriving(){
 void headon(){
   if (state != prior_state) {
     ledRed(1);
-    intialT = millis();
+    initialT = millis();
     prior_state = state;
+    
     leftMotor = -MED;
     rightMotor = -MED;
-    CommandMotors();
+    m.setM1Speed(rightMotor);
+    m.setM2Speed(leftMotor);
     stateChecker(); 
-  t = millis();
-  if (t > (initialT + INCREMENT))
+  } t = millis();
+  if (t > (initialT + INCREMENT)){
     state = KEEPDRIVING;
     ledRed(0); 
   }  
@@ -83,14 +116,15 @@ void headon(){
 void avoidright(){
   if (state != prior_state) {
     ledYellow(1);
-    intialT = millis();
+    initialT = millis();
     prior_state = state;
-    leftMotor = STOP;
+    leftMotor = OFF;
     rightMotor = FAST;
-    CommandMotors();
+    m.setM1Speed(rightMotor);
+    m.setM2Speed(leftMotor);
     stateChecker(); 
-  t = millis();
-  if (t > (initialT + INCREMENT))
+  } t = millis();
+  if (t > (initialT + INCREMENT)){
     state = KEEPDRIVING;
     ledYellow(0); 
   }  
@@ -99,14 +133,15 @@ void avoidright(){
 void avoidleft(){
   if (state != prior_state) {
     ledYellow(1);
-    intialT = millis();
+    initialT = millis();
     prior_state = state;
     leftMotor = FAST;
-    rightMotor = STOP;
-    CommandMotors();
+    rightMotor = OFF;
+    m.setM1Speed(rightMotor);
+    m.setM2Speed(leftMotor);
     stateChecker(); 
-  t = millis();
-  if (t > (initialT + INCREMENT))
+  } t = millis();
+  if (t > (initialT + INCREMENT)){
     state = KEEPDRIVING;
     ledYellow(0); 
   }  
@@ -115,11 +150,13 @@ void avoidleft(){
 void stop(){
   if (state != prior_state) {
     ledRed(1);
-    intialT = millis();
+    initialT = millis();
     prior_state = state;
-    leftMotor = STOP;
-    rightMotor = STOP;
-    CommandMotors();
+    leftMotor = OFF;
+    rightMotor = OFF;
+    m.setM1Speed(rightMotor);
+    m.setM2Speed(leftMotor);
+    
 
   }  
 }
@@ -138,7 +175,7 @@ void setup() {
   
 
   prior_state = NONE;
-  state = KEEPDRIVING
+  state = KEEPDRIVING;
 
 }
 
@@ -146,70 +183,63 @@ void setup() {
 void loop() {
 
 
-  recvWithStartEndMarkers();
-
-  if (newData == true){
-    
-    strcpy(tempChar, receivedChars); //make a copy of recievedChars so we can make changes to it and not change recievedChars 
-    parseData();  
-    SendBumpData();
+//  recvWithStartEndMarkers();
+//
+//  if (newData == true){
+//    
+//    strcpy(tempChar, receivedChars); //make a copy of recievedChars so we can make changes to it and not change recievedChars 
+//    parseData();  
+//    SendBumpData();
+  FR  = digitalRead(BMP_FR) == LOW;
+  R = digitalRead(BMP_R)  == LOW;
+  MR = digitalRead(BMP_MR) == LOW;
+  ML = digitalRead(BMP_ML) == LOW;
+  L = digitalRead(BMP_L) == LOW;
+  FL = digitalRead(BMP_FL) == LOW;
 
 //start of FSM CODE ************
     switch (state) {
         case KEEPDRIVING:
           keepdriving();
-          break
+          break;
         case HEADON:
           headon();
-          break
+          break;
 
         case AVOIDRIGHT:
           avoidright();
-          break
+          break;
         case AVOIDLEFT:
           avoidleft();
-          break
+          break;
           
         case STOP:
           stop();
-          break
+          break;
         
     }
-
-
-
-
-void stateChecker() {
-  
-  if (FL && L && ML && MR && R && FR) {
-    state = STOP;  
-  } else if (ML && MR) {
-    state == HEADON
-  } else if ( FL || L || ML ) {
-    state == AVOIDLEFT
-  } else if (FR || R || MR) {
-    state == AVOIDRIGHT
-  }
-    
+    printBumpData();
 }
+
+
 
 
 // ************************************************************
     
-    //SendRecievedData(); //uncomment this (and make the neccicary changes to the Rpi code) to have the arduino send the Rpi back what it sent. Viewing the message the
-                          //Rpi sends the arduino is important to make sure the Rpi isnt sending garbage
-    newData = false;
-    
-  }
-
-    
-  
-//printBumpData(); //for testing the arduino code with the bump sensors on its own, comment this in to test the 
-//                   //bump sensors without doing any communication with the RPI
-  
-CommandMotors();
-
-}
+//    //SendRecievedData(); //uncomment this (and make the neccicary changes to the Rpi code) to have the arduino send the Rpi back what it sent. Viewing the message the
+//                          //Rpi sends the arduino is important to make sure the Rpi isnt sending garbage
+//    newData = false;
+//    
+//  }
+//
+//    
+//  
+////printBumpData(); //for testing the arduino code with the bump sensors on its own, comment this in to test the 
+////                   //bump sensors without doing any communication with the RPI
+//  
+//CommandMotors();
+//
+//}
 
 //============================================
 
@@ -275,22 +305,17 @@ rightMotor = atoi(strIndexer);
 
 
 
-void CommandMotors(){  
 
-  m.setM1Speed(rightMotor);
-  m.setM2Speed(leftMotor);
-
-}
 
 
 
 //===========================FUNCTIONS USED FOR TESTING, NOT NEEDED FOR LAB====================================
 
-void SendRecievedData(){
-  Serial.println(receivedChars);
-}
-
-
+//void SendRecievedData(){
+//  Serial.println(receivedChars);
+//}
+//
+//
 void printBumpData(){
   
   x=digitalRead(0);
