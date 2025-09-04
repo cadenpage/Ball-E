@@ -24,9 +24,17 @@ if __name__ == '__main__':
                     x=int(line[0])
                     y=int(line[1])
                     z=int(line[2]) #we dont convert this to a float becasue we went to be able to recieve the message that we are at a cross, which wont be an int. 
-                    print([x,y,z])
+                    s0 = int(line[3])
+                    s1 = int(line[4])
+                    s2 = int(line[5])
+                    s3 = int(line[6])
+                    s4 = int(line[7])
+                    s5 = int(line[8])
+                    s6 = int(line[9])
+                    s7 = int(line[10])
+                    print([x,y,z,s0,s1,s2,s3,s4,s5,s6,s7])
                 except:
-                    print("packet dropped") #this is designed to catch when python shoves bits on top of each other. 
+                    print("packet dropped dipshit") #this is designed to catch when python shoves bits on top of each other. 
 
 
             
@@ -41,7 +49,7 @@ if __name__ == '__main__':
                     leftMotor=100+.02*z #now that we are SURE that z isnt the string cross, we cast z to an int and recalculate leftMotor and rightMotor, 
                     rightMotor=250-.02*z
                 else:
-                    print('at intersetion')
+                    print('at intersection dipshit')
                     #do something here like incrimenting a value you call 'lines_hit' to one higher, and writing code to make sure that some time (1 second should do it) 
                     # passes between being able to incriment lines_hit so that it wont be incrimented a bunch of times when you hit your first cross. IE give your robot time to leave a cross
                     #before allowing lines_hit to be incrimented again.
