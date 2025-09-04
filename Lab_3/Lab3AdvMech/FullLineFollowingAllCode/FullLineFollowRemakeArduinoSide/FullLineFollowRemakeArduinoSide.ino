@@ -23,6 +23,9 @@ boolean newData = false;
 
 
 
+
+
+
 //=====================================================
 
 void setup() {
@@ -37,11 +40,10 @@ void setup() {
     qtr.setSensorPins((const uint8_t[]){9, 17, 23, 3, 10,11,12,13}, SensorCount); // changed pins
 
     calibrateSensors();
-    qtr.setEmitterPins(2, 6);//et away with a single emitter pin providing power to both emitters originally (4,5) for future reference
-     QTRReadMode::On; //emitters on measures active reflectance instead of ambient light levels, better becasue the ambient light level will change as the robot moves around the board but the reflectance levels will not
+    qtr.setEmitterPin(2);//et away with a single emitter pin providing power to both emitters originally (4,5) for future reference
+    QTRReadMode::On; //emitters on measures active reflectance instead of ambient light levels, better becasue the ambient light level will change as the robot moves around the board but the reflectance levels will not
     Serial.println("<Arduino is ready>");
 }
-
 
 //====================================================
 
@@ -50,37 +52,37 @@ void loop() {
 //////////////////////////////////////////REPAIRING THE READLINEBLACK FUNCTION SO THE LINEPOSITION VARIABLE IS ACTUALLY USEFULL FOR STUDENTS//////////////////////////////////////////////
 
 linePosition = qtr.readLineBlack(sensorValues);
-
-//REPAIR NUMBER ONE:  every sensor reading under 300 is a noisy and messes up the lineposition measurment, so this for loop filters it out
-for (int i=0; i<= 7; i++){
-   if (sensorValues[i] <300){
-       sensorValues[i]=0;     
-    }
-}
-
-
-// REPAIR NUMBER 2: checking if all my sensorvalues are zero and then setting lineposition to zero,sometimes if all sensorvalues are zero lineposition will be set to 7k and this fixes that
-if (sensorValues[0]==0 && sensorValues[1]==0 && sensorValues[2]==0 && sensorValues[3]==0 && sensorValues[4]==0 && sensorValues[5]==0 && sensorValues[6]==0 && sensorValues[7]==0){
-  linePosition=0;
-}
-
-//REPAIR NUMBER THREE: if only sensor 0 or sensor 8 are reading measurments, then the low level function that calculates linePosition will set it to values that dare not representative of where the sensor array
-//is actually located relative to the line, the below loops fix that by setting linePosition to  1000 if ONLY sensor 0 sees anything, and setting linePosition to 5000 if ONLY sensor 7 sees anything
-if (sensorValues[0] >0 && sensorValues[1]==0 && sensorValues[2]==0 && sensorValues[3]==0 && sensorValues[4]==0 && sensorValues[5]==0 && sensorValues[6]==0 && sensorValues[7]==0){
-  linePosition=1000;
-} 
-if (sensorValues[7] >0 && sensorValues[0]==0 && sensorValues[1]==0 && sensorValues[2]==0 && sensorValues[3]==0 && sensorValues[4]==0 && sensorValues[5]==0 && sensorValues[6]==0){
-  linePosition=5000;
-}
-
-//REPAIR NUMBER 4: there are still situations where linePosition is somehow greater than 5000 or 0<linePosition<1000, so I am hard capping linePosition to be between 1000 and 5000 when linePosition is greater
-//than zero.
-if (linePosition > 5000){
-  linePosition = 5000;
-}
-if (linePosition < 1000 && linePosition > 0){
-  linePosition = 1000;
-}
+//
+////REPAIR NUMBER ONE:  every sensor reading under 300 is a noisy and messes up the lineposition measurment, so this for loop filters it out
+//for (int i=0; i<= 7; i++){
+//   if (sensorValues[i] <300){
+//       sensorValues[i]=0;     
+//    }
+//}
+//
+//
+//// REPAIR NUMBER 2: checking if all my sensorvalues are zero and then setting lineposition to zero,sometimes if all sensorvalues are zero lineposition will be set to 7k and this fixes that
+//if (sensorValues[0]==0 && sensorValues[1]==0 && sensorValues[2]==0 && sensorValues[3]==0 && sensorValues[4]==0 && sensorValues[5]==0 && sensorValues[6]==0 && sensorValues[7]==0){
+//  linePosition=0;
+//}
+//
+////REPAIR NUMBER THREE: if only sensor 0 or sensor 8 are reading measurments, then the low level function that calculates linePosition will set it to values that dare not representative of where the sensor array
+////is actually located relative to the line, the below loops fix that by setting linePosition to  1000 if ONLY sensor 0 sees anything, and setting linePosition to 5000 if ONLY sensor 7 sees anything
+//if (sensorValues[0] >0 && sensorValues[1]==0 && sensorValues[2]==0 && sensorValues[3]==0 && sensorValues[4]==0 && sensorValues[5]==0 && sensorValues[6]==0 && sensorValues[7]==0){
+//  linePosition=1000;
+//} 
+//if (sensorValues[7] >0 && sensorValues[0]==0 && sensorValues[1]==0 && sensorValues[2]==0 && sensorValues[3]==0 && sensorValues[4]==0 && sensorValues[5]==0 && sensorValues[6]==0){
+//  linePosition=5000;
+//}
+//
+////REPAIR NUMBER 4: there are still situations where linePosition is somehow greater than 5000 or 0<linePosition<1000, so I am hard capping linePosition to be between 1000 and 5000 when linePosition is greater
+////than zero.
+//if (linePosition > 5000){
+//  linePosition = 5000;
+//}
+//if (linePosition < 1000 && linePosition > 0){
+//  linePosition = 1000;
+//}
 
 //this loop uses the leftmost and rightmost sensors to determin if the robot is at a cross. If both of those sensors read high, then the robot is at a cross. 
 if ((sensorValues[7] > 500) && (sensorValues[0] > 500)){
@@ -113,8 +115,25 @@ if ((sensorValues[7] > 500) && (sensorValues[0] > 500)){
       Serial.print(",");
       Serial.print(leftMotor);
       Serial.print(",");
+   //   Serial.println(rightMotor);
+      Serial.print(sensorValues[0]);
+      Serial.print(",");
+      Serial.print(sensorValues[1]);
+      Serial.print(",");
+      Serial.print(sensorValues[2]);
+      Serial.print(",");
+      Serial.print(sensorValues[3]);
+      Serial.print(",");
+      Serial.print(sensorValues[4]);
+      Serial.print(",");
+      Serial.print(sensorValues[5]);
+      Serial.print(",");
+      Serial.print(sensorValues[6]);
+      Serial.print(",");
+      Serial.print(sensorValues[7]);
+      Serial.print(",");
       Serial.println(rightMotor);
-      
+
       newData = false;
 
       
