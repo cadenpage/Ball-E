@@ -76,7 +76,7 @@ async def ccStepperHalf():
 
 
 async def main():
-	motor_direction = input('Select motor direction: c=clockwise\n') # you add counterclockwise option
+	motor_direction = input('Select motor direction cfull chalf ccfull cchalf or q to quit\n') # you add counterclockwise option
 
 	while True:
 		try:

@@ -23,10 +23,7 @@ async def StepperFull(direction):
 	]
 	if direction == 'cc':
 		sequence = sequence[::-1]
-	for step in sequence:
-		GPIO.output(motor_channel, step)
-		await asyncio.sleep(0.002)
-		print('Step executed')
+		
 
 async def StepperHalf(direction):
 	print(f'{direction} half step\n')
