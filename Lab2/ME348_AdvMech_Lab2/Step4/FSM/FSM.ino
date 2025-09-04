@@ -1,8 +1,6 @@
 #include <AStar32U4Motors.h>
 #include <AStar32U4.h>
-AStar32U4Motors m; //read the documentation of this library to understand what functions to use to drive the motors and how to use them
-
-
+AStar32U4Motors m;
 
 int leftMotor;
 int rightMotor;
@@ -17,13 +15,7 @@ const uint8_t BMP_ML = 5;
 const uint8_t BMP_L = 7;
 const uint8_t BMP_FL = 8;
 
-int x=0;
-int y=0;
-int z=0;
-int a=0;
-int b=0;
-int c=0;
-
+//============================================================================================
 
 enum states {
     NONE,
@@ -39,8 +31,6 @@ states prior_state, state;
 uint32_t initialT;
 uint16_t counter;
 uint32_t t;
-
-
 
 const unsigned long INCREMENT=1000;
 
@@ -58,6 +48,8 @@ bool ML; //= digitalRead(BMP_ML) == HIGH;
 bool L; //= digitalRead(BMP_L) == HIGH;
 bool FL; //= digitalRead(BMP_FL) == HIGH;
 
+//============================================================================================
+
 void stateChecker() {
   
   if (FL && L && ML && MR && R && FR) {
@@ -74,12 +66,7 @@ void stateChecker() {
     
 }
 
-void CommandMotors(){  
-
-  m.setM1Speed(rightMotor);
-  m.setM2Speed(leftMotor);
-
-}
+//============================================================================================
 
 void keepdriving(){
   ledGreen(1);
@@ -89,15 +76,15 @@ void keepdriving(){
     rightMotor = FAST;
     m.setM1Speed(rightMotor);
     m.setM2Speed(leftMotor);
-    stateChecker();
-    ledGreen(0);
+  
      
-  }
+  } stateChecker();
 }
 
 void headon(){
   if (state != prior_state) {
     ledRed(1);
+    ledGreen(0);
     initialT = millis();
     prior_state = state;
     
@@ -105,8 +92,9 @@ void headon(){
     rightMotor = -MED;
     m.setM1Speed(rightMotor);
     m.setM2Speed(leftMotor);
-    stateChecker(); 
-  } t = millis();
+ 
+  } stateChecker();
+  t = millis();
   if (t > (initialT + INCREMENT)){
     state = KEEPDRIVING;
     ledRed(0); 
@@ -116,14 +104,15 @@ void headon(){
 void avoidright(){
   if (state != prior_state) {
     ledYellow(1);
+    ledGreen(0);
     initialT = millis();
     prior_state = state;
     leftMotor = OFF;
     rightMotor = FAST;
     m.setM1Speed(rightMotor);
     m.setM2Speed(leftMotor);
-    stateChecker(); 
-  } t = millis();
+  } stateChecker();
+  t = millis();
   if (t > (initialT + INCREMENT)){
     state = KEEPDRIVING;
     ledYellow(0); 
@@ -133,14 +122,16 @@ void avoidright(){
 void avoidleft(){
   if (state != prior_state) {
     ledYellow(1);
+    ledGreen(0);
     initialT = millis();
     prior_state = state;
     leftMotor = FAST;
     rightMotor = OFF;
     m.setM1Speed(rightMotor);
     m.setM2Speed(leftMotor);
-    stateChecker(); 
-  } t = millis();
+     
+  } stateChecker();
+  t = millis();
   if (t > (initialT + INCREMENT)){
     state = KEEPDRIVING;
     ledYellow(0); 
@@ -161,7 +152,7 @@ void stop(){
   }  
 }
 
-
+//============================================================================================
 void setup() {
   Serial.begin(115200);
   pinMode(BMP_FR, INPUT_PULLUP);
@@ -178,18 +169,9 @@ void setup() {
   state = KEEPDRIVING;
 
 }
-
-
+//============================================================================================
 void loop() {
-
-
-//  recvWithStartEndMarkers();
-//
-//  if (newData == true){
-//    
-//    strcpy(tempChar, receivedChars); //make a copy of recievedChars so we can make changes to it and not change recievedChars 
-//    parseData();  
-//    SendBumpData();
+  
   FR  = digitalRead(BMP_FR) == LOW;
   R = digitalRead(BMP_R)  == LOW;
   MR = digitalRead(BMP_MR) == LOW;
@@ -197,7 +179,6 @@ void loop() {
   L = digitalRead(BMP_L) == LOW;
   FL = digitalRead(BMP_FL) == LOW;
 
-//start of FSM CODE ************
     switch (state) {
         case KEEPDRIVING:
           keepdriving();
@@ -218,126 +199,4 @@ void loop() {
           break;
         
     }
-    printBumpData();
-}
-
-
-
-
-// ************************************************************
-    
-//    //SendRecievedData(); //uncomment this (and make the neccicary changes to the Rpi code) to have the arduino send the Rpi back what it sent. Viewing the message the
-//                          //Rpi sends the arduino is important to make sure the Rpi isnt sending garbage
-//    newData = false;
-//    
-//  }
-//
-//    
-//  
-////printBumpData(); //for testing the arduino code with the bump sensors on its own, comment this in to test the 
-////                   //bump sensors without doing any communication with the RPI
-//  
-//CommandMotors();
-//
-//}
-
-//============================================
-
-void recvWithStartEndMarkers() {
-//this function is the most important one of the whole lab, read the blog post made my Robin2
-//some questions:
-      //whats the purpose of the start and end markers?
-      //Why bother making this code unblocking?
-      //
-    static boolean recvInProgress = false;
-    static byte ndx = 0;
-    char startMarker = '<';
-    char endMarker = '>';
-    char rc;
-                                         
-    while (Serial.available() > 0 && newData == false) {
-        rc = Serial.read();
-                                       
-
-        if (recvInProgress == true) {
-            if (rc != endMarker) {
-                receivedChars[ndx] = rc;
-                ndx++;
-                if (ndx >= numChars) {
-                    ndx = numChars - 1;
-                }
-            }
-            else {
-                receivedChars[ndx] = '\0'; // terminates the string, frankly unsure why I need 
-                                           //this but it breaks if I remove it. Bonus points if you find out why
-                recvInProgress = false;
-                ndx = 0;
-                newData = true;
-            }
-        }
-
-        else if (rc == startMarker) {
-            recvInProgress = true;
-        }
-    }
-}
-
-//============================================
-
-void parseData(){ //this function takes a string and seperates it by the comma into 2 strings, then casts those strings to ints
-  
-strcpy(tempChar,receivedChars); //copying recievedChar into tempChar so we dont alter recievedChar
-
-char *strIndexer = strtok(tempChar,",");
-
-leftMotor = atoi(strIndexer);
-
-strIndexer = strtok(NULL,",");
-
-rightMotor = atoi(strIndexer);
-
-}  
-
-
-
-
-
-
-
-
-
-
-
-
-//===========================FUNCTIONS USED FOR TESTING, NOT NEEDED FOR LAB====================================
-
-//void SendRecievedData(){
-//  Serial.println(receivedChars);
-//}
-//
-//
-void printBumpData(){
-  
-  x=digitalRead(0);
-  y=digitalRead(1);
-  z=digitalRead(4);
-
-  a=digitalRead(5);
-  b=digitalRead(7); //gonna have to set these also
-  c=digitalRead(8);
-  
-
-  //Serial.print(receivedChars);
-  Serial.print(x);
-  Serial.print(',');
-  Serial.print(y);
-  Serial.print(',');
-  Serial.print(z);
-  Serial.print(',');
-  Serial.print(a);
-  Serial.print(',');
-  Serial.print(b);
-  Serial.print(',');
-  Serial.println(c);
-  delay(1000);
 }
