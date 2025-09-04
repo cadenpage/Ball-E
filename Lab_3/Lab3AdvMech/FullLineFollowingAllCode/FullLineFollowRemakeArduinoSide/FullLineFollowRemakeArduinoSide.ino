@@ -34,13 +34,14 @@ void setup() {
     //arduino pin sensornames I am using: 7, 18, 23 aka A5. note:PIN A1 DID NOT WORK WITH ANY SENSOR!!, 20, 21, 22, 8, 6. UNHOOK THE BLUE JUMPER LABELED BUZZER ON THE ASTAR or pin 6 will cause the buzzer to activate.
 //    qtr.setEmitterPins(4, 5);
 //     QTRReadMode::On;
-    qtr.setSensorPins((const uint8_t[]){7, 18, 23, 20, 21, 22, 8, 6}, SensorCount);
+    qtr.setSensorPins((const uint8_t[]){9, 17, 23, 3, 10,11,12,13}, SensorCount); // changed pins
 
     calibrateSensors();
-    qtr.setEmitterPins(4, 5); //can get away with a single emitter pin providing power to both emitters
+    qtr.setEmitterPins(2, 6);//et away with a single emitter pin providing power to both emitters originally (4,5) for future reference
      QTRReadMode::On; //emitters on measures active reflectance instead of ambient light levels, better becasue the ambient light level will change as the robot moves around the board but the reflectance levels will not
     Serial.println("<Arduino is ready>");
 }
+
 
 //====================================================
 
