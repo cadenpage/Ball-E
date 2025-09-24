@@ -4,6 +4,12 @@ M E 392Q Robot Project Documentation
 Password??: Ball-Eslife
 Does anybody remember?
 
+Lab1: https://web.goodnotes.com/s/e0vSM6vI2udJUArcopzqla
+Lab2: https://web.goodnotes.com/s/vJYPn3jOgElcfOsEhNsajn
+Lab3: https://web.goodnotes.com/s/ibs8PbZ0arVDl1eeYGp3WG
+
+
+
 
 
 **Add Subtree to Repository**
