@@ -13,8 +13,8 @@ GPIO.setmode(GPIO.BCM)
 GPIO.setup(motor_channel,GPIO.OUT)
 
 
-async def StepperFull():
-	print('clockwise\n') 
+async def cStepperFull():
+	print('clockwise full\n') 
 	GPIO.output(motor_channel, (GPIO.HIGH,GPIO.LOW,GPIO.LOW,GPIO.LOW))
 	await asyncio.sleep(0.002)
 	GPIO.output(motor_channel, (GPIO.LOW,GPIO.HIGH,GPIO.LOW,GPIO.LOW))
@@ -24,16 +24,43 @@ async def StepperFull():
 	GPIO.output(motor_channel, (GPIO.LOW,GPIO.LOW,GPIO.LOW,GPIO.HIGH))
 	await asyncio.sleep(0.002)
 
+async def cStepperHalf():
+	print('clockwise half\n') 
+	GPIO.output(motor_channel, (GPIO.HIGH,GPIO.LOW,GPIO.LOW,GPIO.LOW))
+	await asyncio.sleep(0.002)
+	GPIO.output(motor_channel, (GPIO.HIGH,GPIO.HIGH,GPIO.LOW,GPIO.LOW))
+	await asyncio.sleep(0.002)
+	GPIO.output(motor_channel, (GPIO.LOW,GPIO.HIGH,GPIO.LOW,GPIO.LOW))
+	await asyncio.sleep(0.002)
+	GPIO.output(motor_channel, (GPIO.LOW,GPIO.HIGH,GPIO.HIGH,GPIO.LOW))
+	await asyncio.sleep(0.002)
+	GPIO.output(motor_channel, (GPIO.LOW,GPIO.LOW,GPIO.HIGH,GPIO.LOW))
+	await asyncio.sleep(0.002)
+	GPIO.output(motor_channel, (GPIO.LOW,GPIO.LOW,GPIO.HIGH,GPIO.HIGH))
+	await asyncio.sleep(0.002)
+	GPIO.output(motor_channel, (GPIO.LOW,GPIO.LOW,GPIO.LOW,GPIO.HIGH))
+	await asyncio.sleep(0.002)
+	GPIO.output(motor_channel, (GPIO.HIGH,GPIO.LOW,GPIO.LOW,GPIO.HIGH))
+	await asyncio.sleep(0.002)
+
+
 async def main():
 	motor_direction = input('Select motor direction: c=clockwise\n') # you add counterclockwise option
 
 	while True:
 		try:
-			if(motor_direction == 'c'):
-				await StepperFull()
+			if(motor_direction == 'cfull'):
+				await cStepperFull()
+			elif(motor_direction == 'chalf'):
+				await cStepperHalf()
+			elif(motor_direction == 'ccfull'):
+				await ccStepperFull()
+			elif(motor_direction == 'cchalf'):
+				await ccStepperHalf()
+			
 
 		except KeyboardInterrupt as e: # have to put ctrl+c for this to stop
-			motor_direction = input('Select motor direction: c=clockwise or q to quit\n') # you add counterclockwise option
+			motor_direction = input('Select motor direction cfull chalf ccfull cchalf or q to quit\n') # you add counterclockwise option
 			if(motor_direction == 'q'):
 				print('Motor Stopped')
 
