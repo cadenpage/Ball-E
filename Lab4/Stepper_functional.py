@@ -26,6 +26,7 @@ async def StepperFull(direction):
 	for step in sequence:
 		GPIO.output(motor_channel, step)
 		await asyncio.sleep(0.002)
+		print('Step executed')
 
 async def StepperHalf(direction):
 	print(f'{direction} half step\n')
@@ -44,6 +45,7 @@ async def StepperHalf(direction):
 	for step in sequence:
 		GPIO.output(motor_channel, step)
 		await asyncio.sleep(0.002)
+		print('Step executed')
 
 async def main():
 	while True:
