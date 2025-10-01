@@ -43,6 +43,37 @@ async def cStepperHalf():
 	GPIO.output(motor_channel, (GPIO.HIGH,GPIO.LOW,GPIO.LOW,GPIO.HIGH))
 	await asyncio.sleep(0.002)
 
+async def ccStepperFull():
+	print('counterclockwise full\n') 
+	GPIO.output(motor_channel, (GPIO.LOW,GPIO.LOW,GPIO.LOW,GPIO.HIGH))
+	await asyncio.sleep(0.002)
+	GPIO.output(motor_channel, (GPIO.LOW,GPIO.LOW,GPIO.HIGH,GPIO.LOW))
+	await asyncio.sleep(0.002)
+	GPIO.output(motor_channel, (GPIO.LOW,GPIO.HIGH,GPIO.LOW,GPIO.LOW))
+	await asyncio.sleep(0.002)
+	GPIO.output(motor_channel, (GPIO.HIGH,GPIO.LOW,GPIO.LOW,GPIO.LOW))
+	await asyncio.sleep(0.002)
+
+async def ccStepperHalf():
+	print('counterclockwise half\n') 
+	GPIO.output(motor_channel, (GPIO.HIGH,GPIO.LOW,GPIO.LOW,GPIO.HIGH))
+	await asyncio.sleep(0.002)
+	GPIO.output(motor_channel, (GPIO.LOW,GPIO.LOW,GPIO.LOW,GPIO.HIGH))
+	await asyncio.sleep(0.002)
+	GPIO.output(motor_channel, (GPIO.LOW,GPIO.LOW,GPIO.HIGH,GPIO.HIGH))
+	await asyncio.sleep(0.002)
+	GPIO.output(motor_channel, (GPIO.LOW,GPIO.LOW,GPIO.HIGH,GPIO.LOW))
+	await asyncio.sleep(0.002)
+	GPIO.output(motor_channel, (GPIO.LOW,GPIO.HIGH,GPIO.HIGH,GPIO.LOW))
+	await asyncio.sleep(0.002)
+	GPIO.output(motor_channel, (GPIO.LOW,GPIO.HIGH,GPIO.LOW,GPIO.LOW))
+	await asyncio.sleep(0.002)
+	GPIO.output(motor_channel, (GPIO.HIGH,GPIO.HIGH,GPIO.LOW,GPIO.LOW))
+	await asyncio.sleep(0.002)
+	GPIO.output(motor_channel, (GPIO.HIGH,GPIO.LOW,GPIO.LOW,GPIO.LOW))
+	await asyncio.sleep(0.002)
+
+
 
 async def main():
 	motor_direction = input('Select motor direction: c=clockwise\n') # you add counterclockwise option
