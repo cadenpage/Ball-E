@@ -1,4 +1,4 @@
- const byte numChars = 32;
+const byte numChars = 32;
 char receivedChars[numChars];
 char tempChar[numChars]; // temporary array used for parsing
 
