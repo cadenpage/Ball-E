@@ -147,7 +147,8 @@ if __name__ == '__main__':
                 # SENSOR INTERPRETATION → EVENT
                 # ==================================================
                 event = None
-                if z >= 7000:  # intersection detected
+                #if z >= 7000:  # intersection detected
+                if y==1:
                     event = "intersection"
                 elif (sensors[0] == 0 and sensors[7] == 0) and (sensors[3] > 800 or sensors[4] > 800):  # middle sensors see line
                     event = "centered"
@@ -157,7 +158,8 @@ if __name__ == '__main__':
                     event = "right_detected"
                 else:
                     event = "stop"
-
+                #state = state.on_event(event)  #bullshit
+                #print("Current state:", state)
                 # ==================================================
                 # STATE MACHINE UPDATE
                 # ==================================================
@@ -179,7 +181,7 @@ if __name__ == '__main__':
                     print("Intersection detected – pausing")
                     leftMotor = 0
                     rightMotor = 0
-                    time.sleep(15)  # pause for decision-making
+                    time.sleep(5)  # pause for decision-making
                 elif isinstance(line_follower.state, Stop):
                     leftMotor = 0
                     rightMotor = 0
