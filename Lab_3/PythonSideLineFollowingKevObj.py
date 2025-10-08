@@ -134,14 +134,14 @@ if __name__ == '__main__':
                 # s0 = int(line[3])
                 # s1 = int(line[4])
                 # s2 = int(line[5])
-                # s3 = int(line[6])
-                # s4 = int(line[7])
+                s3 = int(line[6])
+                s4 = int(line[7])
                 # s5 = int(line[8])
                 # s6 = int(line[9])
                 # s7 = int(line[10])
                 sensors = [int(val) for val in line[3:11]] #s0-s7
 
-                print([x,y,z] + sensors)
+                print([x,y,z,s3,s4])# + sensors)
 
                 # ==================================================
                 # SENSOR INTERPRETATION → EVENT
@@ -149,12 +149,12 @@ if __name__ == '__main__':
                 event = None
                 if z >= 7000:  # intersection detected
                     event = "intersection"
+                elif (sensors[0] == 0 and sensors[7] == 0) and (sensors[3] > 800 or sensors[4] > 800):  # middle sensors see line
+                    event = "centered"
                 elif sum(sensors[:3]) > sum(sensors[5:]):  # stronger on left side
                     event = "left_detected"
                 elif sum(sensors[5:]) > sum(sensors[:3]):  # stronger on right side
                     event = "right_detected"
-                elif sensors[3] > 3000 or sensors[4] > 3000:  # middle sensors see line
-                    event = "centered"
                 else:
                     event = "stop"
 
@@ -167,14 +167,14 @@ if __name__ == '__main__':
                 # MOTOR CONTROL BASED ON STATE
                 # ==================================================
                 if isinstance(line_follower.state, LeftOfLine):
-                    leftMotor = 80
+                    leftMotor = int(80)
                     rightMotor = 200
                 elif isinstance(line_follower.state, RightOfLine):
                     leftMotor = 200
                     rightMotor = 80
                 elif isinstance(line_follower.state, Center):
                     leftMotor = 150
-                    rightMotor = 150
+                    rightMotor = 130
                 elif isinstance(line_follower.state, Intersection):
                     print("Intersection detected – pausing")
                     leftMotor = 0
