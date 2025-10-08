@@ -179,7 +179,7 @@ if __name__ == '__main__':
                     print("Intersection detected – pausing")
                     leftMotor = 0
                     rightMotor = 0
-                    time.sleep(1)  # pause for decision-making
+                    time.sleep(15)  # pause for decision-making
                 elif isinstance(line_follower.state, Stop):
                     leftMotor = 0
                     rightMotor = 0
