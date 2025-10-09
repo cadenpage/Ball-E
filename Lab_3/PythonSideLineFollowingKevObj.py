@@ -121,7 +121,7 @@ if __name__ == '__main__':
     line_follower = LineFollower()
 
     while True:
-        sendString('/dev/ttyACM0',115200,'<'+str(leftMotor)+','+str(rightMotor)+'>',0.0001)
+        #sendString('/dev/ttyACM0',115200,'<'+str(leftMotor)+','+str(rightMotor)+'>',0.0001)
 
         if ser.in_waiting > 0:  #we wait until the arduino has sent something to us before we try to read anything from the serial port.
             line = ser.readline().decode('utf-8')
@@ -181,14 +181,15 @@ if __name__ == '__main__':
                     print("Intersection detected – pausing")
                     leftMotor = 0
                     rightMotor = 0
-                    time.sleep(5)  # pause for decision-making
+                    time.sleep(1)  # pause for decision-making
                 elif isinstance(line_follower.state, Stop):
                     leftMotor = 0
                     rightMotor = 0
 
             except:
                 print("packet dropped") #this is designed to catch when python shoves bits on top of each other.
-
+        
+        sendString('/dev/ttyACM0',115200,'<'+str(leftMotor)+','+str(rightMotor)+'>',0.0001)
 
 
             #define high value and low value variable just to see what vibe were working with
