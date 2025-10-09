@@ -239,5 +239,7 @@ if __name__ == '__main__':
                 print("packet dropped:", e)
 
         # Always send the latest command each loop (keeps Arduino in sync)
+        print(f"\rSTATE:{line_follower.state}  X:{x}  CROSSES:{cross_count}  TURN:{turning}  DONE:{mission_done}  CMD:({leftMotor},{rightMotor})", end="")
+
         sendString('/dev/ttyACM0', 115200, f'<{leftMotor},{rightMotor}>', 0.0001)
 
