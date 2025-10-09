@@ -6,11 +6,11 @@ from sendStringScript import sendString
 
 # ---- Motion tunables ----
 STOP_HOLD      = 0.20   # seconds to fully stop before turning
-TURN_TIME      = 0.60   # seconds to execute the turn
+TURN_TIME      = 1   # seconds to execute the turn
 STRAIGHT_TIME  = 0.30   # pass-through window at 1st cross
 
-TURN_RIGHT_SPEED = (200, -200)   # (left, right) → right turn
-TURN_LEFT_SPEED  = (-200, 200)   # (left, right) → left turn
+TURN_RIGHT_SPEED = (-200, 200)   # (left, right) → right turn
+TURN_LEFT_SPEED  = (200, -200)   # (left, right) → left turn
 STRAIGHT_SPEED   = (150, 150)  # straight drive for pass-through
 
 
