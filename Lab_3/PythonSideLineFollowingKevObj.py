@@ -135,8 +135,6 @@ if __name__ == '__main__':
 
     line_follower = LineFollower()
 
-    global cross_count, prev_is_cross, last_cross_time
-    global turning, turn_until, mission_done
 
 
     while True:
