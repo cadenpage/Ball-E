@@ -265,7 +265,7 @@ if __name__ == '__main__':
                     rightMotor = 80
                 elif isinstance(line_follower.state, Center):
                     leftMotor = 150
-                    rightMotor = 130
+                    rightMotor = 150
                 elif isinstance(line_follower.state, Intersection):
                     # Let the Intersection class decide what to do
                     line_follower.state = line_follower.state.handle_action(line_follower)
