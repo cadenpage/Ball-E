@@ -6,7 +6,7 @@ from sendStringScript import sendString
 
 # ---- Motion tunables ----
 STOP_HOLD      = 0.20   # seconds to fully stop before turning
-TURN_TIME      = 1   # seconds to execute the turn
+TURN_TIME      = .5   # seconds to execute the turn
 STRAIGHT_TIME  = 0.30   # pass-through window at 1st cross
 
 TURN_RIGHT_SPEED = (-200, 200)   # (left, right) → right turn
@@ -187,7 +187,7 @@ class Intersection(State):
             print("Intersection: stopping (cross #3+)")
             follower.leftMotor = 0
             follower.rightMotor = 0
-            return Stop()
+            return TurnLeft()
 
     def on_event(self, event):
         # While in Intersection we let handle_action drive transitions.
