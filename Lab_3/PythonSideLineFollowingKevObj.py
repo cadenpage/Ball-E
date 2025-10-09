@@ -137,6 +137,9 @@ if __name__ == '__main__':
 
 
 
+# initialize HUD vars that get printed every loop
+    x = 0  # linePosition default so HUD doesn't crash
+
     while True:
         if ser.in_waiting > 0:
             try:
@@ -148,22 +151,19 @@ if __name__ == '__main__':
                     continue
 
                 # -------------------- Parse telemetry --------------------
-                x = int(fields[0])            # linePosition (0 or ~1000..5000)
-                y = int(fields[1])            # isCross (0/1) -- keep as 'y' for your prints
-                z = int(fields[2])            # echoed left motor -- keep for your prints
-                # keep your s3/s4 debug prints exactly as you had them
+                x = int(fields[0])          # linePosition (0 or ~1000..5000)
+                y = int(fields[1])          # isCross (0/1)
+                z = int(fields[2])          # echoed left motor
                 s3 = int(fields[6])
                 s4 = int(fields[7])
-
                 sensors = [int(val) for val in fields[3:11]]  # s0..s7
 
-                # Keep your debug print format intact
+                # Keep your debug print format
                 print([x, y, z, s3, s4, sensors])
 
                 # ==================================================
-                # SENSOR INTERPRETATION → EVENT  (kept intact)
+                # SENSOR INTERPRETATION → EVENT  (your logic)
                 # ==================================================
-                event = None
                 if y == 1:
                     event = "intersection"
                 elif (sensors[0] == 0 and sensors[7] == 0) and (sensors[3] > 800 or sensors[4] > 800):
@@ -176,7 +176,7 @@ if __name__ == '__main__':
                     event = "stop"
 
                 # ==================================================
-                # STATE MACHINE UPDATE (unchanged printing behavior)
+                # STATE MACHINE UPDATE (prints on transitions)
                 # ==================================================
                 line_follower.on_event(event)
 
@@ -184,20 +184,27 @@ if __name__ == '__main__':
                 # MISSION: 2 crosses → right turn, 3rd cross → stop
                 # ==================================================
                 now = time.time()
-
-                # Rising-edge cross detect with cooldown
                 is_cross = y
+
+                # Rising-edge with cooldown
                 if is_cross == 1 and prev_is_cross == 0 and (now - last_cross_time) > CROSS_COOLDOWN:
                     cross_count += 1
                     last_cross_time = now
                     print(f"--- CROSS #{cross_count} detected ---")
+
                     if cross_count == 2 and not turning and not mission_done:
                         print("Initiating right turn (after 2nd cross)")
                         turning = True
                         turn_until = now + TURN_DURATION
+                        # Immediate kick so we don't sit on the cross
+                        leftMotor, rightMotor = TURN_RIGHT_SPEED
+                        ser.write(f"<{leftMotor},{rightMotor}>".encode('ascii'))
+                        ser.flush()
+
                     elif cross_count >= 3 and not mission_done:
                         print("Mission complete (3rd cross) → stopping")
                         mission_done = True
+
                 prev_is_cross = is_cross
 
                 # ==================================================
@@ -208,38 +215,40 @@ if __name__ == '__main__':
                     leftMotor, rightMotor = 0, 0
 
                 elif turning:
-                    if now < turn_until:
+                    if time.time() < turn_until:
                         leftMotor, rightMotor = TURN_RIGHT_SPEED
                     else:
                         turning = False
-                        # After turn, resume forward; the FSM will re-center
-                        leftMotor, rightMotor = 150, 130
+                        leftMotor, rightMotor = 150, 130  # resume forward
 
                 else:
-                    # Your original state-based motor outputs (no sleeps)
+                    # Normal FSM outputs (unchanged)
                     if isinstance(line_follower.state, LeftOfLine):
-                        leftMotor = int(80)
-                        rightMotor = 200
+                        leftMotor, rightMotor = 80, 200
                     elif isinstance(line_follower.state, RightOfLine):
-                        leftMotor = 200
-                        rightMotor = 80
+                        leftMotor, rightMotor = 200, 80
                     elif isinstance(line_follower.state, Center):
-                        leftMotor = 150
-                        rightMotor = 130
+                        leftMotor, rightMotor = 150, 130
                     elif isinstance(line_follower.state, Intersection):
-                        # Hold while on a cross (non-blocking)
-                        print("Intersection detected – holding")
-                        leftMotor = 0
-                        rightMotor = 0
-                    elif isinstance(line_follower.state, Stop):
-                        leftMotor = 0
-                        rightMotor = 0
+                        # Pass through early crosses
+                        if cross_count < 2:
+                            leftMotor, rightMotor = 150, 150
+                        elif cross_count >= 3:
+                            leftMotor, rightMotor = 0, 0
+                        else:
+                            # safety if race before 'turning' arms
+                            leftMotor, rightMotor = 140, 140
+                    else:  # Stop
+                        leftMotor, rightMotor = 0, 0
 
             except Exception as e:
                 print("packet dropped:", e)
 
-        # Always send the latest command each loop (keeps Arduino in sync)
+        # HUD every loop (safe: x was initialized before loop)
         print(f"\rSTATE:{line_follower.state}  X:{x}  CROSSES:{cross_count}  TURN:{turning}  DONE:{mission_done}  CMD:({leftMotor},{rightMotor})", end="")
 
-        sendString('/dev/ttyACM0', 115200, f'<{leftMotor},{rightMotor}>', 0.0001)
+        # Always send latest command via the already-open handle
+        ser.write(f"<{leftMotor},{rightMotor}>".encode('ascii'))
+        ser.flush()
 
+        time.sleep(0.02)
