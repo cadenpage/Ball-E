@@ -4,6 +4,14 @@ import time
 import numpy as np
 from sendStringScript import sendString
 
+# ---- Motion tunables ----
+STOP_HOLD      = 0.20   # seconds to fully stop before turning
+TURN_TIME      = 0.60   # seconds to execute the turn
+STRAIGHT_TIME  = 0.30   # pass-through window at 1st cross
+
+TURN_RIGHT_SPEED = (200, -200)   # (left, right) → right turn
+TURN_LEFT_SPEED  = (-200, 200)   # (left, right) → left turn
+STRAIGHT_SPEED   = (150, 150)  # straight drive for pass-through
 
 
 
@@ -36,6 +44,74 @@ class State(object):
         Returns the name of the State.
         """
         return self.__class__.__name__
+
+class TurnRight(State):
+    """Stop briefly, then perform a right turn, then return to Center."""
+    def __init__(self):
+        super().__init__()
+        self.t0 = None
+
+    def handle_action(self, follower):
+        now = time.time()
+        if self.t0 is None:
+            self.t0 = now
+            print("TurnRight: init")
+            # immediate stop on entry
+            follower.leftMotor = 0
+            follower.rightMotor = 0
+            return self
+
+        dt = now - self.t0
+        if dt < STOP_HOLD:
+            # hold stop to settle
+            follower.leftMotor = 0
+            follower.rightMotor = 0
+            return self
+        elif dt < STOP_HOLD + TURN_TIME:
+            # turning window
+            follower.leftMotor, follower.rightMotor = TURN_RIGHT_SPEED
+            return self
+        else:
+            # done turning → resume following
+            print("TurnRight: complete")
+            return Center()
+
+    def on_event(self, event):
+        # Ignore events during the deterministic turn
+        return self
+
+
+class TurnLeft(State):
+    """Stop briefly, then perform a left turn, then return to Center."""
+    def __init__(self):
+        super().__init__()
+        self.t0 = None
+
+    def handle_action(self, follower):
+        now = time.time()
+        if self.t0 is None:
+            self.t0 = now
+            print("TurnLeft: init")
+            follower.leftMotor = 0
+            follower.rightMotor = 0
+            return self
+
+        dt = now - self.t0
+        if dt < STOP_HOLD:
+            follower.leftMotor = 0
+            follower.rightMotor = 0
+            return self
+        elif dt < STOP_HOLD + TURN_TIME:
+            follower.leftMotor, follower.rightMotor = TURN_LEFT_SPEED
+            return self
+        else:
+            print("TurnLeft: complete")
+            return Center()
+
+    def on_event(self, event):
+        return self
+
+
 
 class LeftOfLine(State):
     """Robot is left of the line (needs to turn right)"""
@@ -80,61 +156,42 @@ class Center(State):
 
 
 class Intersection(State):
-    """Robot detects an intersection"""
+    """Robot detects an intersection and chooses the action based on cross_count."""
     def __init__(self):
         super().__init__()
-        self.pause_start = None  # timestamp marker
-        self.action_done = False
+        self.pause_start = None  # used for timing in pass-through only
 
     def handle_action(self, follower):
-        """Perform action based on current cross count"""
         count = follower.cross_count
         now = time.time()
 
-        # Initialize timing when we first enter this intersection
-        if self.pause_start is None:
-            self.pause_start = now
-            print(f"At cross #{count}")
-
-        # ========= 1️⃣  FIRST CROSS: Pass through =========
         if count == 1:
-            # For ~0.3 sec, just drive straight
-            if now - self.pause_start < 0.3:
-                follower.leftMotor = 150
-                follower.rightMotor = 150
+            # ---- PASS THROUGH: short straight window ----
+            if self.pause_start is None:
+                self.pause_start = now
+                print("Intersection: pass-through (cross #1)")
+            if now - self.pause_start < STRAIGHT_TIME:
+                follower.leftMotor, follower.rightMotor = STRAIGHT_SPEED
                 return self
             else:
-                # Done passing through → go back to following
                 self.pause_start = None
-                self.action_done = True
                 return Center()
 
-        # ========= 2️⃣  SECOND CROSS: Turn right =========
         elif count == 2:
-            # For ~0.6 sec, perform right turn
-            if now - self.pause_start < 0.6:
-                follower.leftMotor = 200
-                follower.rightMotor = 80
-                return self
-            else:
-                # Finished turn, back to line following
-                self.pause_start = None
-                self.action_done = True
-                return Center()
+            # ---- TURN RIGHT at 2nd cross ----
+            print("Intersection: hand-off to TurnRight (cross #2)")
+            return TurnRight()
 
-        # ========= 3️⃣  THIRD CROSS: Stop =========
-        elif count >= 3:
+        else:  # count >= 3
+            # ---- STOP at 3rd cross or later ----
+            print("Intersection: stopping (cross #3+)")
             follower.leftMotor = 0
             follower.rightMotor = 0
-            print("Third intersection reached — stopping robot")
             return Stop()
 
-        # Safety: stay in Intersection if nothing else triggered
-        return self
-
     def on_event(self, event):
-        # Normal transitions are ignored here; handle_action controls it
-        return self    
+        # While in Intersection we let handle_action drive transitions.
+        return self
 
         
     # def on_event(self, event):
@@ -255,29 +312,32 @@ if __name__ == '__main__':
                 line_follower.on_event(event)
 
                 # ==================================================
+                # ==================================================
                 # MOTOR CONTROL BASED ON STATE
                 # ==================================================
                 if isinstance(line_follower.state, LeftOfLine):
-                    leftMotor = int(80)
+                    leftMotor  = 80
                     rightMotor = 200
-                elif isinstance(line_follower.state, RightOfLine):
-                    leftMotor = 200
-                    rightMotor = 80
-                elif isinstance(line_follower.state, Center):
-                    leftMotor = 150
-                    rightMotor = 150
-                elif isinstance(line_follower.state, Intersection):
-                    # Let the Intersection class decide what to do
-                    line_follower.state = line_follower.state.handle_action(line_follower)
 
-                    # Update motor outputs from the FSM object (if stored there)
-                    leftMotor = getattr(line_follower, "leftMotor", leftMotor)
+                elif isinstance(line_follower.state, RightOfLine):
+                    leftMotor  = 200
+                    rightMotor = 80
+
+                elif isinstance(line_follower.state, Center):
+                    leftMotor  = 150
+                    rightMotor = 150
+
+                elif isinstance(line_follower.state, (Intersection, TurnRight, TurnLeft)):
+                    # Let action states decide motor outputs and transitions
+                    line_follower.state = line_follower.state.handle_action(line_follower)
+                    # Pull the commanded motors from the FSM object (fallback to existing values)
+                    leftMotor  = getattr(line_follower, "leftMotor", leftMotor)
                     rightMotor = getattr(line_follower, "rightMotor", rightMotor)
 
-
                 elif isinstance(line_follower.state, Stop):
-                    leftMotor = 0
+                    leftMotor  = 0
                     rightMotor = 0
+
 
             except (IndexError, ValueError):
                 print("packet dropped") #this is designed to catch when python shoves bits on top of each other.
