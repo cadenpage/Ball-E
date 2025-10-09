@@ -181,6 +181,8 @@ if __name__ == '__main__':
                     print("Intersection detected – pausing")
                     leftMotor = 0
                     rightMotor = 0
+                    sendString('/dev/ttyACM0',115200,'<'+str(leftMotor)+','+str(rightMotor)+'>',0.0001)
+
                     time.sleep(1)  # pause for decision-making
                 elif isinstance(line_follower.state, Stop):
                     leftMotor = 0
