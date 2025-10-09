@@ -181,8 +181,8 @@ if __name__ == '__main__':
     ser=serial.Serial('/dev/ttyACM0',115200)
     ser.reset_input_buffer() #clears anything the arduino has been sending while the Rpi isnt prepared to recieve.
 
-    leftMotor = 100
-    rightMotor = 100
+    leftMotor = 0
+    rightMotor = 0
 
     line_follower = LineFollower()
 
@@ -207,7 +207,7 @@ if __name__ == '__main__':
                 # s7 = int(line[10])
                 sensors = [int(val) for val in line[3:11]] #s0-s7
 
-                print([x,y,z,s3,s4])# + sensors)
+                print([x,y,z,sensors, "Crosses:", line_follower.cross_count, "Motors:", leftMotor, rightMotor])
 
                 # ==================================================
                 # SENSOR INTERPRETATION → EVENT
@@ -279,7 +279,7 @@ if __name__ == '__main__':
                     leftMotor = 0
                     rightMotor = 0
 
-            except:
+            except (IndexError, ValueError):
                 print("packet dropped") #this is designed to catch when python shoves bits on top of each other.
         
         sendString('/dev/ttyACM0',115200,'<'+str(leftMotor)+','+str(rightMotor)+'>',0.0001)
