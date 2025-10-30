@@ -1,0 +1,290 @@
+#!/usr/bin/env python3
+import serial
+import time
+from sendStringScript import sendString
+
+# ---- Motion tunables ----
+STOP_HOLD      = 0.20   # seconds to fully stop before turning
+TURN_TIME      = 0.5    # seconds to execute the turn
+STRAIGHT_TIME  = 0.30   # pass-through window at 1st cross
+
+TURN_RIGHT_SPEED = (-10, 10)   # (left, right) → right turn
+TURN_LEFT_SPEED  = (10, -10)   # (left, right) → left turn
+STRAIGHT_SPEED   = (5, 5)    # straight drive for pass-through
+
+
+# ============================================================
+#  Base State Class
+# ============================================================
+
+class State(object):
+    """Base class for all FSM states."""
+    def __init__(self):
+        print('Processing current state:', str(self))
+
+    def on_event(self, event):
+        """Handle events delegated to this state."""
+        pass
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __str__(self):
+        return self.__class__.__name__
+
+
+# ============================================================
+#  Concrete State Classes
+# ============================================================
+
+class TurnRight(State):
+    """Stop briefly, then perform a right turn, then return to Center."""
+    def __init__(self):
+        super().__init__()
+        self.t0 = None
+
+    def handle_action(self, follower):
+        now = time.time()
+        if self.t0 is None:
+            self.t0 = now
+            print("TurnRight: init")
+            follower.leftMotor = 0
+            follower.rightMotor = 0
+            return self
+
+        dt = now - self.t0
+        if dt < STOP_HOLD:
+            follower.leftMotor = 0
+            follower.rightMotor = 0
+            return self
+        elif dt < STOP_HOLD + TURN_TIME:
+            follower.leftMotor, follower.rightMotor = TURN_RIGHT_SPEED
+            return self
+        else:
+            print("TurnRight: complete")
+            return Center()
+
+    def on_event(self, event):
+        return self  # ignore events during deterministic turn
+
+
+class TurnLeft(State):
+    """Stop briefly, then perform a left turn, then return to Center."""
+    def __init__(self):
+        super().__init__()
+        self.t0 = None
+
+    def handle_action(self, follower):
+        now = time.time()
+        if self.t0 is None:
+            self.t0 = now
+            print("TurnLeft: init")
+            follower.leftMotor = 0
+            follower.rightMotor = 0
+            return self
+
+        dt = now - self.t0
+        if dt < STOP_HOLD:
+            follower.leftMotor = 0
+            follower.rightMotor = 0
+            return self
+        elif dt < STOP_HOLD + TURN_TIME:
+            follower.leftMotor, follower.rightMotor = TURN_LEFT_SPEED
+            return self
+        else:
+            print("TurnLeft: complete")
+            return Center()
+
+    def on_event(self, event):
+        return self
+
+
+class LeftOfLine(State):
+    """Robot is left of the line (needs to turn right)."""
+    def on_event(self, event):
+        if event == "centered":
+            return Center()
+        elif event == "right_detected":
+            return RightOfLine()
+        elif event == "intersection":
+            return Intersection()
+        elif event == "stop":
+            return Stop()
+        return self
+
+
+class RightOfLine(State):
+    """Robot is right of the line (needs to turn left)."""
+    def on_event(self, event):
+        if event == "centered":
+            return Center()
+        elif event == "left_detected":
+            return LeftOfLine()
+        elif event == "intersection":
+            return Intersection()
+        elif event == "stop":
+            return Stop()
+        return self
+
+
+class Center(State):
+    """Robot is centered on the line (go straight)."""
+    def on_event(self, event):
+        if event == "left_detected":
+            return LeftOfLine()
+        elif event == "right_detected":
+            return RightOfLine()
+        elif event == "intersection":
+            return Intersection()
+        elif event == "stop":
+            return Stop()
+        return self
+
+
+class Intersection(State):
+    """Robot detects an intersection and chooses action based on cross count."""
+    def __init__(self):
+        super().__init__()
+        self.pause_start = None
+
+    def handle_action(self, follower):
+        count = follower.cross_count
+        now = time.time()
+
+        if count == 1:
+            # ---- PASS THROUGH (1st cross) ----
+            if self.pause_start is None:
+                self.pause_start = now
+                print("Intersection: pass-through (cross #1)")
+            if now - self.pause_start < STRAIGHT_TIME:
+                follower.leftMotor, follower.rightMotor = STRAIGHT_SPEED
+                return self
+            else:
+                self.pause_start = None
+                return Center()
+
+        elif count == 2:
+            # ---- TURN RIGHT at 2nd cross ----
+            print("Intersection: hand-off to TurnRight (cross #2)")
+            return TurnRight()
+
+        else:
+            # ---- STOP at 3rd cross or later ----
+            print("Intersection: stopping (cross #3+)")
+            follower.leftMotor = 0
+            follower.rightMotor = 0
+            return Stop()
+
+    def on_event(self, event):
+        return self
+
+
+class Stop(State):
+    """Robot is stopped."""
+    def on_event(self, event):
+        if event == "left_detected":
+            return LeftOfLine()
+        elif event == "right_detected":
+            return RightOfLine()
+        elif event == "centered":
+            return Center()
+        elif event == "intersection":
+            return Intersection()
+        return self
+
+
+# ============================================================
+#  Line Follower FSM
+# ============================================================
+
+class LineFollower(object):
+    """Line following finite state machine."""
+    def __init__(self):
+        self.state = Stop()
+        self.cross_count = 0
+        self.in_cross = False
+        self.last_cross_time = 0.0
+        self.leftMotor = 0
+        self.rightMotor = 0
+
+    def on_event(self, event):
+        self.state = self.state.on_event(event)
+
+
+# ============================================================
+#  Main Loop
+# ============================================================
+
+if __name__ == '__main__':
+    ser = serial.Serial('/dev/ttyACM0', 115200)
+    ser.reset_input_buffer()
+
+    leftMotor = 0
+    rightMotor = 0
+    line_follower = LineFollower()
+
+    while True:
+        if ser.in_waiting <= 0:
+            sendString('/dev/ttyACM0', 115200, f'<{leftMotor},{rightMotor}>', 0.0001)
+            continue
+
+        raw = ser.readline().decode('utf-8').strip()
+        parts = raw.split(',')
+        try:
+            x = int(parts[0])
+            y = int(parts[1])
+            z = int(parts[2])
+            sensors = [int(val) for val in parts[3:11]]
+
+            print([x, y, z, sensors, "Crosses:", line_follower.cross_count, "Motors:", leftMotor, rightMotor])
+
+            # ---------- Cross detection ----------
+            now = time.time()
+            event = None
+
+            if y == 1 and not line_follower.in_cross:
+                line_follower.in_cross = True
+                if now - line_follower.last_cross_time > 0.7:
+                    line_follower.cross_count += 1
+                    line_follower.last_cross_time = now
+                    print(f"Cross #{line_follower.cross_count} detected")
+                event = "intersection"
+
+            elif y == 0 and line_follower.in_cross:
+                line_follower.in_cross = False
+
+            # ---------- Sensor → Event mapping ----------
+            if event is None:
+                if y == 1:
+                    event = "intersection"
+                elif (sensors[0] == 0 and sensors[7] == 0) and (sensors[3] > 800 or sensors[4] > 800):
+                    event = "centered"
+                elif sum(sensors[:3]) > sum(sensors[5:]):
+                    event = "left_detected"
+                elif sum(sensors[5:]) > sum(sensors[:3]):
+                    event = "right_detected"
+                else:
+                    event = "stop"
+
+            # ---------- FSM Update ----------
+            line_follower.on_event(event)
+
+            # ---------- Motor Control ----------
+            if isinstance(line_follower.state, LeftOfLine):
+                leftMotor, rightMotor = 8, 10
+            elif isinstance(line_follower.state, RightOfLine):
+                leftMotor, rightMotor = 10, 
+            elif isinstance(line_follower.state, Center):
+                leftMotor, rightMotor = STRAIGHT_SPEED
+            elif isinstance(line_follower.state, (Intersection, TurnRight, TurnLeft)):
+                line_follower.state = line_follower.state.handle_action(line_follower)
+                leftMotor = getattr(line_follower, "leftMotor", leftMotor)
+                rightMotor = getattr(line_follower, "rightMotor", rightMotor)
+            elif isinstance(line_follower.state, Stop):
+                leftMotor, rightMotor = 0, 0
+
+        except (IndexError, ValueError):
+            print("packet dropped")
+
+        # ---------- Send Motor Command ----------
+        sendString('/dev/ttyACM0', 115200, f'<{leftMotor},{rightMotor}>', 0.0001)
