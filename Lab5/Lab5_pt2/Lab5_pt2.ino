@@ -59,9 +59,9 @@ unsigned long previousMillis = 0;
 unsigned long priorTimeL,priorTimeR; // We need to keep track of time for each PID controller separately
 double lastSpeedErrorL,lastSpeedErrorR; //same with error
 double cumErrorL, cumErrorR;
-double maxErr = 20; // chosen arbitrarily for now, students can tune. 
-double desVelL = 0; // will be in inches per sec
-double desVelR = 0;
+double maxErr = 50                                          ; // chosen arbitrarily for now, students can tune. 
+double desVelL = 10; // will be in inches per sec
+double desVelR = 10;
 
 // PID CONSTANTS
 // LEFT MOTOR - you need to find values. FYI I found good responses with Kp ~ 10x bigger than Ki, and ~3x bigger than Kd. My biggest value was <2.
@@ -87,9 +87,7 @@ void setup() {
     m.setM1Speed(0);  // MAX IS 400 FYI. You should set this first to see max speed in in/s after you convert the values
     m.setM2Speed(0);  
     unsigned long startTime = millis();
-    cumErrorL = cumErrorR = 0;
-    priorTimeL = priorTimeR = millis();
-    lastSpeedErrorL = lastSpeedErrorR = 0;
+  
     //pinMode(3, OUTPUT); //left motor
    // pinMode(2,OUTPUT); //left motor
     qtr.setTypeRC(); //this allows us to read the line sensor from didgital pins
@@ -196,12 +194,17 @@ void runPID(){
 
      newVelRight = drivePIDR(velRight);
      newVelLeft = drivePIDL(velLeft);  
+//      
+
+      Serial.print(desVelL);
+      Serial.print(',');
+      Serial.print(desVelR);
+      Serial.print(' ||| ');
+      Serial.print(newVelLeft);
+      Serial.print(',');
+      Serial.println(newVelRight);
       
-//      Serial.print("RIGHT: ");
-//      Serial.print(velRight);
-//      Serial.print(',');
-////      Serial.print(newVelRight);
-//      Serial.print("  ===  LEFT: ");
+   
 
 
 
@@ -277,6 +280,9 @@ double drivePIDR(double curr){
 //===========================================================================================================================
 
 void parseData(){
+   cumErrorL = cumErrorR = 0;
+  
+    lastSpeedErrorL = lastSpeedErrorR = 0;
   
 
 
@@ -285,13 +291,23 @@ void parseData(){
   
   strtokIndexer = strtok(tempChar,","); //sets strtokIndexer = to everything up to the first comma in tempChar /0 //this line is broken
   //leftMotor = atoi(strtokIndexer); //converts strtokIndexer into a int
-  desVelL = atoi(strtokIndexer);
+  
+  double newDesVelL = atoi(strtokIndexer);
 
   
 
   strtokIndexer= strtok(NULL, ","); //setting the first input to null causes strtok to continue looking for commas in tempChar starting from where it left off, im not really sure why 
   //rightMotor = atoi(strtokIndexer);
-  desVelR = atoi(strtokIndexer);
+  double newDesVelR = atoi(strtokIndexer);
+
+  if (abs(newDesVelL - desVelL) >  2.0 ) { 
+    cumErrorL = 0;
+  }
+  if (abs(newDesVelR - desVelR) >  2.0 ) { 
+    cumErrorR = 0;
+  }
+  desVelL = newDesVelL;
+  desVelR = newDesVelR;
 
   
   //now that we have extracted the data from the Rpi as floats, we can use them to command actuators somewhere else in the code
