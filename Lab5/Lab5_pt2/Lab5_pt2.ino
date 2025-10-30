@@ -88,8 +88,7 @@ void setup() {
     m.setM2Speed(0);  
     unsigned long startTime = millis();
   
-    //pinMode(3, OUTPUT); //left motor
-   // pinMode(2,OUTPUT); //left motor
+
     qtr.setTypeRC(); //this allows us to read the line sensor from didgital pins
 
     //arduino pin sensornames I am using: 7, 18, 23 aka A5. note:PIN A1 DID NOT WORK WITH ANY SENSOR!!, 20, 21, 22, 8, 6. UNHOOK THE BLUE JUMPER LABELED BUZZER ON THE ASTAR or pin 6 will cause the buzzer to activate.
@@ -98,9 +97,13 @@ void setup() {
     qtr.setSensorPins((const uint8_t[]){7, 18, 23, 20, 21,22,8,6}, SensorCount); // changed pins - removed conflicts
 
     calibrateSensors();
-    qtr.setEmitterPins(4,16);//et away with a single emitter pin providing power to both emitters originally (4,5) for future reference
+    qtr.setEmitterPin(4);//et away with a single emitter pin providing power to both emitters originally (4,5) for future reference
     QTRReadMode::On; //emitters on measures active reflectance instead of ambient light levels, better becasue the ambient light level will change as the robot moves around the board but the reflectance levels will not
     Serial.println("<Arduino is ready>");
+    cumErrorL = cumErrorR = 0;
+    priorTimeL = priorTimeR = millis();
+  
+    lastSpeedErrorL = lastSpeedErrorR = 0;
 }
 
 
@@ -223,10 +226,17 @@ void runPID(){
 //PID FUNCTIONS DONT EDIT
 //===========================================================================================================================
 double drivePIDL(double curr){
+//    if (firstPIDCall){
+//      priorTimeL = millis();
+//      cumErrorL = 0;
+//      lastSpeedErrorL = 0;
+//      return 0;
+//    }
     double rateError;
     double error;
     unsigned long currentTime;
     unsigned long elapsedTime;
+    
   
     currentTime = millis();                               //get current time
     elapsedTime = (double)(currentTime - priorTimeL);     // compute elasped time for this control period
@@ -280,9 +290,7 @@ double drivePIDR(double curr){
 //===========================================================================================================================
 
 void parseData(){
-   cumErrorL = cumErrorR = 0;
-  
-    lastSpeedErrorL = lastSpeedErrorR = 0;
+   
   
 
 
