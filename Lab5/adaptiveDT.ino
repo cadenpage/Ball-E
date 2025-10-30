@@ -3,29 +3,34 @@
 #include <QTRSensors.h>
 
 QTRSensors qtr;
+
+// ---------- Serial CSV timing ----------
+unsigned long lastCSV = 0;
+const uint16_t CSV_PERIOD_MS = 20;   // ~50 Hz
+
+// ---------- QTR read timing (don’t block too often) ----------
+unsigned long lastQTR = 0;
+const uint16_t QTR_PERIOD_MS = 25;   // ~40 Hz
+
+// ---------- Sensors ----------
 const uint8_t SensorCount = 8;
 uint16_t sensorValues[SensorCount];
-uint16_t linePosition;
+uint16_t linePosition = 0;
+int isCross = 0;
 
-const byte numChars = 32;
-char receivedChars[numChars];
-char tempChar[numChars];
-boolean newData = false;
-
-// ----------------- MOTOR / ENCODER -----------------
+// ---------- Motor & encoder ----------
 AStar32U4Motors m;
+
+// Command outputs (what we send to AStar library)
+int leftMotor = 0;
+int rightMotor = 0;
 
 #define PI 3.141592653589
 
-// Commanded outputs
-int leftMotor = 0;
-int rightMotor = 0;
-int isCross = 0;
+double leftMotorMax  = 36.0; // in/s  (measure on your robot)
+double rightMotorMax = 30.0; // in/s
 
-double leftMotorMax  = 36;   // in/s  (find from max test)
-double rightMotorMax = 30;   // in/s
-
-// Encoder pins (keep as your working PID)
+// Encoders (keep your working pins)
 const int encoderRightPinA = 15;
 const int encoderRightPinB = 16;
 const int encoderLeftPinA  = 19;
@@ -34,76 +39,82 @@ const int encoderLeftPinB  = 11;
 Encoder encoderRight(encoderRightPinA, encoderRightPinB);
 Encoder encoderLeft(encoderLeftPinA, encoderLeftPinB);
 
-int encoderResolution = 1440;      // counts / rev
-double d = 2.7559055;              // wheel diameter [in]
+const int encoderResolution = 1440;    // counts / rev
+const double d = 2.7559055;            // wheel diameter [in]
 
-volatile int posLeftCount = 0;
-volatile int posRightCount = 0;
-int posLeftCountLast  = 0;
-int posRightCountLast = 0;
+// Encoder counters
+int posLeftCount = 0,  posRightCount = 0;
+int posLeftCountLast = 0, posRightCountLast = 0;
 
+// Kinematics
 double delta_right = 0.0, delta_left = 0.0;
 double posLeftRad = 0.0, posRightRad = 0.0;
-double velLeft = 0.0, velRight = 0.0;           // in/s
-double newVelLeft = 0.0, newVelRight = 0.0;     // in/s
+double velLeft = 0.0, velRight = 0.0;        // in/s
+double newVelLeft = 0.0, newVelRight = 0.0;  // in/s
 
-// ----------------- TIMING -----------------
-unsigned long previousMillis = 0;      // for velocity dt
-unsigned long priorTimeL = 0, priorTimeR = 0;   // PID dt
-unsigned long lastPrint = 0;           // throttle serial
+// Loop timing
+unsigned long prevMillis = 0;   // for velocity dt
+unsigned long priorTimeL = 0;   // PID dt per side
+unsigned long priorTimeR = 0;
 
-// ----------------- PID -----------------
+// ---------- PID ----------
+double desVelL = 0.0;   // in/s (set via serial "<L,R>")
+double desVelR = 0.0;
+
+double kpL = 3.0, kiL = 0.7, kdL = 1.0;
+double kpR = 3.0, kiR = 0.7, kdR = 1.0;
+
 double lastSpeedErrorL = 0.0, lastSpeedErrorR = 0.0;
-double cumErrorL = 0.0,     cumErrorR = 0.0;
-double maxErr = 20.0;                      // anti-windup clamp (units: (in/s)*s)
-double desVelL = 10.0;                     // setpoints [in/s]
-double desVelR = 10.0;
+double cumErrorL = 0.0, cumErrorR = 0.0;
+double maxErr = 20.0; // anti-windup clamp (units: (in/s)*s)
 
-// LEFT gains
-double kpL = 3.0;
-double kiL = 0.7;
-double kdL = 1.0;
-// RIGHT gains
-double kpR = 3.0;
-double kiR = 0.7;
-double kdR = 1.0;
+// ---------- serial RX buffer ----------
+const byte numChars = 32;
+char receivedChars[numChars];
+char tempChar[numChars];
+bool newData = false;
 
-// ----------------- QTR PINS -----------------
-// Do NOT use 16 here (it’s encoderRightPinB).
-// If you have the buzzer jumper on pin 6, remove it or avoid pin 6 as a sensor.
+// ---------- Forward decl ----------
+void emitCSV();
+void runPID();
+void readLineThrottled();
+void parseData();
+void recvWithStartEndMarkers();
+int  motorVelToSpeedCommand(double v, double vmax);
+double drivePIDL(double curr);
+double drivePIDR(double curr);
+void calibrateSensors();
+
 void setupQTR() {
   qtr.setTypeRC();
+  // Avoid encoder pins (15,16,19,11). Pin 6 is OK only if buzzer jumper removed.
   qtr.setSensorPins((const uint8_t[]){7, 18, 23, 20, 21, 22, 8, 6}, SensorCount);
-  qtr.setEmitterPins(4, 5); // <- avoid 16 to prevent encoder conflict
+  qtr.setEmitterPins(4, 5);      // <- do NOT use 16 (conflicts with encoder B)
+  qtr.setTimeout(1000);          // shorter RC timing (us)
+  qtr.setSamplesPerSensor(2);    // fewer samples to reduce blocking
 }
 
-// ----------------- SETUP -----------------
 void setup() {
   Serial.begin(115200);
 
-  // Motors idle
   m.setM1Speed(0);
   m.setM2Speed(0);
 
-  // Timers init
   unsigned long now = millis();
-  previousMillis = now;
+  prevMillis = now;
   priorTimeL = now;
   priorTimeR = now;
+  lastCSV = now;
+  lastQTR = now;
 
-  // QTR
   setupQTR();
   calibrateSensors();
 
-  Serial.println(F("<Arduino ready>"));
+  // No extra Serial prints (Python expects clean CSV only)
 }
 
-// ----------------- LOOP -----------------
 void loop() {
-  // line sensing (non-blocking)
-  readThatBitchAssLine();
-
-  // receive setpoints like <12.5,12.5>
+  // 1) Receive setpoints "<L,R>"
   recvWithStartEndMarkers();
   if (newData) {
     strcpy(tempChar, receivedChars);
@@ -111,49 +122,45 @@ void loop() {
     newData = false;
   }
 
-  // run velocity PID at whatever rate the loop allows (uses real dt)
+  // 2) Run velocity PID (uses real dt)
   runPID();
 
-  // throttle prints to reduce jitter
-  if (millis() - lastPrint >= 100) {
-    lastPrint = millis();
-    Serial.print(desVelL); Serial.print(',');
-    Serial.print(desVelR); Serial.print(" || ");
-    Serial.print(velLeft); Serial.print(',');
-    Serial.print(velRight); Serial.print(" || ");
-    Serial.print(newVelLeft); Serial.print(',');
-    Serial.print(newVelRight); Serial.print(" || ");
-    Serial.print(linePosition); Serial.print(',');
-    Serial.println(isCross);
+  // 3) Read QTR at a slower rate (reduces missed encoder counts)
+  readLineThrottled();
+
+  // 4) Emit CSV for Python
+  if (millis() - lastCSV >= CSV_PERIOD_MS) {
+    lastCSV = millis();
+    emitCSV();
   }
 }
 
-// ===================== MOTOR COMMANDS =====================
+// ========================= Motor command =========================
 void CommandMotors() {
   m.setM1Speed(rightMotor);
   m.setM2Speed(leftMotor);
 }
 
 int motorVelToSpeedCommand(double v, double vmax) {
-  v = constrain(v, -vmax, vmax);
-  double cmd = (v / vmax) * 400.0;  // scale to [-400, 400]
-  if (cmd > 400.0) cmd = 400.0;
+  if (v >  vmax) v =  vmax;
+  if (v < -vmax) v = -vmax;
+  double cmd = (v / vmax) * 400.0;   // scale to [-400,400]
+  if (cmd >  400.0) cmd =  400.0;
   if (cmd < -400.0) cmd = -400.0;
   return (int)cmd;
 }
 
-// ===================== CONTROL LOOP =====================
+// ========================= Control loop =========================
 void runPID() {
   unsigned long now = millis();
-  double dt = (now - previousMillis) / 1000.0;    // seconds
-  if (dt <= 0.0) return;                          // guard for first loop / timer wrap
-  previousMillis = now;
+  double dt = (now - prevMillis) / 1000.0;  // seconds
+  if (dt <= 0.0) return;
+  prevMillis = now;
 
-  // Read encoders
+  // Encoders
   posRightCount = encoderRight.read();
   posLeftCount  = encoderLeft.read();
 
-  // Deltas
   delta_right = (double)(posRightCount - posRightCountLast);
   delta_left  = (double)(posLeftCount  - posLeftCountLast);
 
@@ -165,11 +172,11 @@ void runPID() {
   velRight = - (d * 0.5) * posRightRad;
   velLeft  = - (d * 0.5) * posLeftRad;
 
-  // PID per side (each uses its own dt based on priorTime*)
+  // PID per side
   newVelRight = drivePIDR(velRight);
   newVelLeft  = drivePIDL(velLeft);
 
-  // Command motors
+  // Map to motor commands
   rightMotor = motorVelToSpeedCommand(newVelRight, rightMotorMax);
   leftMotor  = motorVelToSpeedCommand(newVelLeft,  leftMotorMax);
 
@@ -179,7 +186,7 @@ void runPID() {
   CommandMotors();
 }
 
-// ===================== PID CORES =====================
+// ========================= PID cores =========================
 double drivePIDL(double curr) {
   unsigned long t = millis();
   double dt = (t - priorTimeL) / 1000.0;
@@ -187,7 +194,7 @@ double drivePIDL(double curr) {
 
   double error = desVelL - curr;
   cumErrorL += error * dt;
-  if (cumErrorL >  maxErr) cumErrorL =  maxErr;   // anti-windup
+  if (cumErrorL >  maxErr) cumErrorL =  maxErr;
   if (cumErrorL < -maxErr) cumErrorL = -maxErr;
 
   double rateError = (error - lastSpeedErrorL) / dt;
@@ -205,7 +212,7 @@ double drivePIDR(double curr) {
 
   double error = desVelR - curr;
   cumErrorR += error * dt;
-  if (cumErrorR >  maxErr) cumErrorR =  maxErr;   // anti-windup
+  if (cumErrorR >  maxErr) cumErrorR =  maxErr;
   if (cumErrorR < -maxErr) cumErrorR = -maxErr;
 
   double rateError = (error - lastSpeedErrorR) / dt;
@@ -216,9 +223,8 @@ double drivePIDR(double curr) {
   return out;
 }
 
-// ===================== SERIAL IN: <L,R> =====================
+// ========================= Serial RX: "<L,R>" =========================
 void parseData() {
-  // DO NOT wipe integrators every packet.
   char *tok = strtok(tempChar, ",");
   if (!tok) return;
   double newDesVelL = atof(tok);
@@ -227,16 +233,18 @@ void parseData() {
   if (!tok) return;
   double newDesVelR = atof(tok);
 
-  // Optional: reset integrators only on large setpoint steps
-  if (fabs(newDesVelL - desVelL) > 2.0) cumErrorL = 0.0;
-  if (fabs(newDesVelR - desVelR) > 2.0) cumErrorR = 0.0;
+  // Reset integrator only on big steps (>2 in/s)
+  double stepL = newDesVelL - desVelL;
+  double stepR = newDesVelR - desVelR;
+  if (stepL > 2.0 || stepL < -2.0) cumErrorL = 0.0;
+  if (stepR > 2.0 || stepR < -2.0) cumErrorR = 0.0;
 
   desVelL = newDesVelL;
   desVelR = newDesVelR;
 }
 
 void recvWithStartEndMarkers() {
-  static boolean recvInProgress = false;
+  static bool recvInProgress = false;
   static byte ndx = 0;
   const char startMarker = '<';
   const char endMarker = '>';
@@ -260,7 +268,7 @@ void recvWithStartEndMarkers() {
   }
 }
 
-// ===================== QTR SENSORS =====================
+// ========================= QTR =========================
 void calibrateSensors() {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
@@ -272,13 +280,10 @@ void calibrateSensors() {
 }
 
 void readThatBitchAssLine() {
-  // Read with emitters (library handles them after setEmitterPins)
   linePosition = qtr.readLineBlack(sensorValues);
 
   // Filter small noise
-  for (int i = 0; i < 8; i++) {
-    if (sensorValues[i] < 300) sensorValues[i] = 0;
-  }
+  for (int i = 0; i < 8; i++) if (sensorValues[i] < 300) sensorValues[i] = 0;
 
   // All zero -> position zero
   bool allZero = true;
@@ -300,7 +305,29 @@ void readThatBitchAssLine() {
   if (linePosition > 5000) linePosition = 5000;
   if (linePosition < 1000 && linePosition > 0) linePosition = 1000;
 
-  // Cross detection
-  if (sensorValues[7] > 500 && sensorValues[0] > 500) isCross = 1;
-  else isCross = 0;
+  // Cross detection via outer sensors
+  isCross = (sensorValues[7] > 500 && sensorValues[0] > 500) ? 1 : 0;
+}
+
+// Throttled wrapper
+void readLineThrottled() {
+  unsigned long now = millis();
+  if (now - lastQTR >= QTR_PERIOD_MS) {
+    lastQTR = now;
+    readThatBitchAssLine();
+  }
+}
+
+// ========================= CSV out =========================
+void emitCSV() {
+  // Format matches Python:
+  // linePosition, isCross, leftMotor, s0..s7, rightMotor
+  Serial.print(linePosition); Serial.print(',');
+  Serial.print(isCross);      Serial.print(',');
+  Serial.print(leftMotor);    Serial.print(',');
+  for (int i = 0; i < 8; i++) {
+    Serial.print(sensorValues[i]);
+    Serial.print(',');
+  }
+  Serial.println(rightMotor);
 }
