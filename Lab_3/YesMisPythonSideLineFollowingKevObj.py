@@ -6,7 +6,7 @@ from sendStringScript import sendString
 
 # ---- Motion tunables ----
 STOP_HOLD      = 0.20   # seconds to fully stop before turning
-TURN_TIME      = 1   # seconds to execute the turn
+TURN_TIME      = .5   # seconds to execute the turn
 STRAIGHT_TIME  = 0.30   # pass-through window at 1st cross
 
 TURN_RIGHT_SPEED = (-200, 200)   # (left, right) → right turn
@@ -15,8 +15,8 @@ STRAIGHT_SPEED   = (150, 150)  # straight drive for pass-through
 
 
 
-leftMotor=int(100)
-rightMotor=int(100)
+leftMotor=int(0)
+rightMotor=int(0)
 
 class State(object):
     """
@@ -193,7 +193,7 @@ class Intersection(State):
         # While in Intersection we let handle_action drive transitions.
         return self
 
-        
+
     # def on_event(self, event):
     #     if event == "centered":
     #         return Center()
@@ -254,14 +254,6 @@ if __name__ == '__main__':
                 x=int(line[0])
                 y=int(line[1])
                 z=int(line[2]) #we dont convert this to a float becasue we went to be able to recieve the message that we are at a cross, which wont be an int.
-                # s0 = int(line[3])
-                # s1 = int(line[4])
-                # s2 = int(line[5])
-                s3 = int(line[6])
-                s4 = int(line[7])
-                # s5 = int(line[8])
-                # s6 = int(line[9])
-                # s7 = int(line[10])
                 sensors = [int(val) for val in line[3:11]] #s0-s7
 
                 print([x,y,z,sensors, "Crosses:", line_follower.cross_count, "Motors:", leftMotor, rightMotor])
@@ -316,16 +308,16 @@ if __name__ == '__main__':
                 # MOTOR CONTROL BASED ON STATE
                 # ==================================================
                 if isinstance(line_follower.state, LeftOfLine):
-                    leftMotor  = 80
-                    rightMotor = 200
+                    leftMotor  = 20
+                    rightMotor = 30 #updated values 
 
                 elif isinstance(line_follower.state, RightOfLine):
-                    leftMotor  = 200
-                    rightMotor = 80
+                    leftMotor  = 20
+                    rightMotor = 10
 
                 elif isinstance(line_follower.state, Center):
-                    leftMotor  = 150
-                    rightMotor = 150
+                    leftMotor  = 30
+                    rightMotor = 30
 
                 elif isinstance(line_follower.state, (Intersection, TurnRight, TurnLeft)):
                     # Let action states decide motor outputs and transitions
@@ -341,7 +333,7 @@ if __name__ == '__main__':
 
             except (IndexError, ValueError):
                 print("packet dropped") #this is designed to catch when python shoves bits on top of each other.
-        
+
         sendString('/dev/ttyACM0',115200,'<'+str(leftMotor)+','+str(rightMotor)+'>',0.0001)
 
 

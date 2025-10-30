@@ -1,4 +1,4 @@
-#include <QTRSensors.h>
+ #include <QTRSensors.h>
 #include <AStar32U4Motors.h>
 AStar32U4Motors m; //read the documentation of this library to understand what functions to use to drive the motors and how to use them
 QTRSensors qtr;
@@ -22,10 +22,10 @@ boolean newData = false;
 //=====================================================
 
 void setup() {
-   pinMode(3, OUTPUT); //left motor
+   pinMode(3, OUTPUT); //left motor WHAT IS GOING ON HERE
    pinMode(2,OUTPUT); //left motor
-    Serial.begin(115200);
-    qtr.setTypeRC(); //this allows us to read the line sensor from didgital pins
+   Serial.begin(115200);
+   qtr.setTypeRC(); //this allows us to read the line sensor from didgital pins
 
     //arduino pin sensornames I am using: 7, 18, 23 aka A5. note:PIN A1 DID NOT WORK WITH ANY SENSOR!!, 20, 21, 22, 8, 6. UNHOOK THE BLUE JUMPER LABELED BUZZER ON THE ASTAR or pin 6 will cause the buzzer to activate.
 //    qtr.setEmitterPins(4, 5);
@@ -43,7 +43,7 @@ void setup() {
 void loop() {
 
 //////////////////////////////////////////REPAIRING THE READLINEBLACK FUNCTION SO THE LINEPOSITION VARIABLE IS ACTUALLY USEFULL FOR STUDENTS//////////////////////////////////////////////
-
+//
 //Quick Debug test
 //
 //  qtr.read(sensorValues);

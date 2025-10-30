@@ -145,7 +145,7 @@ if __name__ == '__main__':
                 # s7 = int(line[10])
                 sensors = [int(val) for val in line[3:11]] #s0-s7
 
-                print([x,y,z,s3,s4])# + sensors)
+                print([x,y,z, sensors])
 
                 # ==================================================
                 # SENSOR INTERPRETATION → EVENT
@@ -185,13 +185,14 @@ if __name__ == '__main__':
                     print("Intersection detected – pausing")
                     leftMotor = 0
                     rightMotor = 0
+                    sendString('/dev/ttyACM0',115200,'<'+str(leftMotor)+','+str(rightMotor)+'>',0.0001)
                     time.sleep(1)  # pause for decision-making
                 elif isinstance(line_follower.state, Stop):
                     leftMotor = 0
                     rightMotor = 0
 
-            except:
-                print("packet dropped") #this is designed to catch when python shoves bits on top of each other.
+            except IndexError as e:
+                print("Packet dropped") #this is designed to catch when python shoves bits on top of each other.
         
         sendString('/dev/ttyACM0',115200,'<'+str(leftMotor)+','+str(rightMotor)+'>',0.0001)
 
