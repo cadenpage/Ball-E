@@ -10,6 +10,11 @@ Lab1: https://web.goodnotes.com/s/e0vSM6vI2udJUArcopzqla<br>
 Lab2: https://web.goodnotes.com/s/vJYPn3jOgElcfOsEhNsajn<br>
 Lab3: https://web.goodnotes.com/s/ibs8PbZ0arVDl1eeYGp3WG<br>
 Lab4: https://web.goodnotes.com/s/VvM9rLc63FB0aU0CL1rIzg<br>
+Lab5: https://web.goodnotes.com/s/xSjNfn0wuz3qUmigq5Ki35<br>
+https://web.goodnotes.com/s/xSjNfn0wuz3qUmigq5Ki35
+
+
+
 <br>
 <br>
   
