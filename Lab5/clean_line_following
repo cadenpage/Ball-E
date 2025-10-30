@@ -8,9 +8,9 @@ STOP_HOLD      = 0.20   # seconds to fully stop before turning
 TURN_TIME      = 0.5    # seconds to execute the turn
 STRAIGHT_TIME  = 0.30   # pass-through window at 1st cross
 
-TURN_RIGHT_SPEED = (-200, 200)   # (left, right) → right turn
-TURN_LEFT_SPEED  = (200, -200)   # (left, right) → left turn
-STRAIGHT_SPEED   = (150, 150)    # straight drive for pass-through
+TURN_RIGHT_SPEED = (-10, 10)   # (left, right) → right turn
+TURN_LEFT_SPEED  = (10, -10)   # (left, right) → left turn
+STRAIGHT_SPEED   = (10, 10)    # straight drive for pass-through
 
 
 # ============================================================
@@ -271,11 +271,11 @@ if __name__ == '__main__':
 
             # ---------- Motor Control ----------
             if isinstance(line_follower.state, LeftOfLine):
-                leftMotor, rightMotor = 80, 200
+                leftMotor, rightMotor = 10, 15
             elif isinstance(line_follower.state, RightOfLine):
-                leftMotor, rightMotor = 200, 80
+                leftMotor, rightMotor = 15, 10
             elif isinstance(line_follower.state, Center):
-                leftMotor, rightMotor = 150, 150
+                leftMotor, rightMotor = 15, 15
             elif isinstance(line_follower.state, (Intersection, TurnRight, TurnLeft)):
                 line_follower.state = line_follower.state.handle_action(line_follower)
                 leftMotor = getattr(line_follower, "leftMotor", leftMotor)
