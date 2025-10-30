@@ -44,8 +44,8 @@ unsigned long priorTimeL,priorTimeR; // We need to keep track of time for each P
 double lastSpeedErrorL,lastSpeedErrorR; //same with error
 double cumErrorL, cumErrorR;
 double maxErr = 20; // chosen arbitrarily for now, students can tune. 
-double desVelL = 15; // will be in inches per sec
-double desVelR = 15;
+double desVelL = 1; // will be in inches per sec
+double desVelR = 1;
 
 // PID CONSTANTS
 // LEFT MOTOR - you need to find values. FYI I found good responses with Kp ~ 10x bigger than Ki, and ~3x bigger than Kd. My biggest value was <2.

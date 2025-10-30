@@ -87,8 +87,11 @@ void setup() {
     m.setM1Speed(0);  // MAX IS 400 FYI. You should set this first to see max speed in in/s after you convert the values
     m.setM2Speed(0);  
     unsigned long startTime = millis();
-    pinMode(3, OUTPUT); //left motor
-    pinMode(2,OUTPUT); //left motor
+    cumErrorL = cumErrorR = 0;
+    priorTimeL = priorTimeR = millis();
+    lastSpeedErrorL = lastSpeedErrorR = 0;
+    //pinMode(3, OUTPUT); //left motor
+   // pinMode(2,OUTPUT); //left motor
     qtr.setTypeRC(); //this allows us to read the line sensor from didgital pins
 
     //arduino pin sensornames I am using: 7, 18, 23 aka A5. note:PIN A1 DID NOT WORK WITH ANY SENSOR!!, 20, 21, 22, 8, 6. UNHOOK THE BLUE JUMPER LABELED BUZZER ON THE ASTAR or pin 6 will cause the buzzer to activate.
@@ -151,7 +154,6 @@ void loop() {
     }
 runPID();
 
-
 }
 
 
@@ -200,8 +202,8 @@ void runPID(){
 //      Serial.print(',');
 ////      Serial.print(newVelRight);
 //      Serial.print("  ===  LEFT: ");
-//      Serial.println(velLeft);
-//      Serial.print(',');
+
+
 
 
       rightMotor = motorVelToSpeedCommand(newVelRight,rightMotorMax);
@@ -282,14 +284,14 @@ void parseData(){
 
   
   strtokIndexer = strtok(tempChar,","); //sets strtokIndexer = to everything up to the first comma in tempChar /0 //this line is broken
-//  leftMotor = atoi(strtokIndexer); //converts strtokIndexer into a int
+  //leftMotor = atoi(strtokIndexer); //converts strtokIndexer into a int
   desVelL = atoi(strtokIndexer);
-  Serial.print(desVelL);
+
   
 
   strtokIndexer= strtok(NULL, ","); //setting the first input to null causes strtok to continue looking for commas in tempChar starting from where it left off, im not really sure why 
-//  rightMotor = atoi(strtokIndexer);
-    desVelR = atoi(strtokIndexer);
+  //rightMotor = atoi(strtokIndexer);
+  desVelR = atoi(strtokIndexer);
 
   
   //now that we have extracted the data from the Rpi as floats, we can use them to command actuators somewhere else in the code
