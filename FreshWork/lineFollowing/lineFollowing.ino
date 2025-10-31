@@ -1,58 +1,204 @@
 #include <QTRSensors.h>
 #include <AStar32U4Motors.h>
+#include <Encoder.h>
 AStar32U4Motors m; //read the documentation of this library to understand what functions to use to drive the motors and how to use them
 QTRSensors qtr;
-const uint8_t SensorCount = 8;
+
+//======Line Following Variables=======
+const uint8_t SensorCount = 8; // Line Follower Sensor Declaration
 uint16_t sensorValues[SensorCount];
 uint16_t linePosition;
 
-const byte numChars = 32;
+const byte numChars = 32; // Array creation for parsing i think?
 char receivedChars[numChars];
 char tempChar[numChars]; // temporary array used for parsing
-
 
 //motor command variables
 int leftMotor=0; //int leftMotor
 int rightMotor=0;
 int isCross=0;
+boolean newData = false; //newData boolean used for turning parsing on and off
 
-  
-boolean newData = false;
+//=======PID Control Variables===========
 
+double leftMotorMax = 36; // Caden & Gloria found by testing
+double rightMotorMax = 30; //do we have to change this? 
 
+const int encoderRightPinA = 15; //Encoder Pins
+const int encoderRightPinB = 16;
 
+const int encoderLeftPinA = 10; 
+const int encoderLeftPinB = 11;
+
+Encoder encoderRight(encoderRightPinA,encoderRightPinB);
+Encoder encoderLeft(encoderLeftPinA,encoderLeftPinB);
+
+int encoderResolution = 1440; // counts per rev
+double d = 2.7559055; //wheel diameter in inches
+
+int posLeftCount = 0;
+double delta_right = 0.0;
+double delta_left = 0.0;
+int posRightCount = 0;
+int posLeftCountLast = 0;
+int posRightCountLast = 0;
+double posLeftRad = 0.0; // this will need to be converted to rad/sec
+double posRightRad = 0.0; // this will need to be converted to rad/sec
+double velLeft = 0; // this will be omegaLeft*d/2;
+double velRight = 0; // this will be omegaRight*d/2 will be in inches per sec;
+double newVelLeft = 0; // this will be omegaLeft*d/2;
+double newVelRight = 0; // this will be omegaRight*d/2 will be in inches per sec;
+
+// MOTOR LOOP CONSTANTS
+double interval = 5; // 5 ms means 200Hz loop - might have to check if this is okay later w/ speed of sensing
+unsigned long previousMillis = 0;
+unsigned long priorTimeL,priorTimeR; // We need to keep track of time for each PID controller separately
+double lastSpeedErrorL,lastSpeedErrorR; //same with error
+double cumErrorL, cumErrorR;
+double maxErr = 50; // chosen arbitrarily for now, students can tune. 
+double desVelL = 10; // will be in inches per sec
+double desVelR = 10;
+
+// PID CONSTANTS
+// LEFT MOTOR - you need to find values. FYI I found good responses with Kp ~ 10x bigger than Ki, and ~3x bigger than Kd. My biggest value was <2.
+double kpL = 3;
+double kiL = .7;
+double kdL = 1;
+// Right MOTOR - assumes we need to tune them differently
+double kpR = 3;
+double kiR = .7;
+double kdR = 1;
+
+double speedmag = 15; //in/s
+bool start = true;
 
 
 //=====================================================
 
 void setup() {
-   pinMode(3, OUTPUT); //left motor
+   pinMode(3, OUTPUT); //left motor not sure if this stuff is necessary
    pinMode(2,OUTPUT); //left motor
     Serial.begin(115200);
-    qtr.setTypeRC(); //this allows us to read the line sensor from didgital pins
+
+    //===========CALIBRATION & SENSING=======================
+    qtr.setTypeRC(); //this allows us to read the line sensor from digital pins -- probably cap
 
     //arduino pin sensornames I am using: 7, 18, 23 aka A5. note:PIN A1 DID NOT WORK WITH ANY SENSOR!!, 20, 21, 22, 8, 6. UNHOOK THE BLUE JUMPER LABELED BUZZER ON THE ASTAR or pin 6 will cause the buzzer to activate.
-//    qtr.setEmitterPins(4, 5);
-//     QTRReadMode::On;
+    qtr.setEmitterPin(4);
+     QTRReadMode::On;
     qtr.setSensorPins((const uint8_t[]){7, 18, 23, 20, 21, 22, 8, 6}, SensorCount);
 
     calibrateSensors();
-    qtr.setEmitterPins(4, 5); //can get away with a single emitter pin providing power to both emitters
-     QTRReadMode::On; //emitters on measures active reflectance instead of ambient light levels, better becasue the ambient light level will change as the robot moves around the board but the reflectance levels will not
+//    qtr.setEmitterPin(4); //can get away with a single emitter pin providing power to both emitters
+//     QTRReadMode::On; //emitters on measures active reflectance instead of ambient light levels, better becasue the ambient light level will change as the robot moves around the board but the reflectance levels will not
     Serial.println("<Arduino is ready>");
+        //==========PID==========
+    m.setM1Speed(100);  // MAX IS 400 FYI. You should set this first to see max speed in in/s after you convert the values
+    m.setM2Speed(100);  
+    unsigned long startTime = millis();
 }
 
 //====================================================
 
 void loop() {
 
-//////////////////////////////////////////REPAIRING THE READLINEBLACK FUNCTION SO THE LINEPOSITION VARIABLE IS ACTUALLY USEFULL FOR STUDENTS//////////////////////////////////////////////
+//=====================REPAIRING THE READLINEBLACK FUNCTION SO THE LINEPOSITION VARIABLE IS ACTUALLY USEFULL FOR STUDENTS==========
+    LineFollow();
+//now linePosition returns a value between 1000 and 5000 that is proportonal to the sensor's position relative to the line, and the value isCross is set to 1 when both sensor 0 and 7 are over a line
+ recvWithStartEndMarkers(); //this function is in charge of taking a piece of data that looks like <17,16> 
+                               //turning it into a string looking like 17,16 and then setting newdata to true,
+                               //letting the rest of the program know a packet of data is ready to be analyzed, does all this without blocking
+                               
+    if (newData == true) { //newData will be true when recvWithStartEndMarkers(); has finished recieving a whole set of data from Rpi (a set of data is denoted as being containted between <>)
+      
+      strcpy(tempChar, receivedChars); //this line makes a copy of recievedChars for parsing in parseData, I do this becasue strtok() will alter any string I give it,I want to preserve the origonal data
+      parseData(); //right now parseData only parses a string of 2 numbers seperated by commas into floats
+                   //so the string 17.5,16 becomes two floats; 17.5 and 16
 
+
+      //below this comment and between setting newData to false is where you want to send the Rpi whatever data you want.
+      Serial.print(linePosition);
+      Serial.print(",");
+      Serial.print(isCross);
+      Serial.print(",");
+      Serial.print(leftMotor);
+      Serial.print(",");
+      Serial.println(rightMotor);
+      
+      newData = false;
+                   
+//    }
+
+    runPID(); //we want this to happen outside of our newdata=true loop so it is never blocked
+
+}
+}
+
+//PID FUNCTIONS DONT EDIT
+//===========================================================================================================================
+double drivePIDL(double curr){
+    double rateError;
+    double error;
+    unsigned long currentTime;
+    unsigned long elapsedTime;
+  
+    currentTime = millis();                               //get current time
+    elapsedTime = (double)(currentTime - priorTimeL);     // compute elasped time for this control period
+
+    error = desVelL - curr;                               // Error
+    cumErrorL += error*elapsedTime;                       // Cumulative Error(since we add this outside the loop, needs to be unique to the motor controlled)
+
+    // INTEGRAL WINDUP                                    // REMOVE WINDUP
+    if(cumErrorL>maxErr)
+    cumErrorL = maxErr;
+    else if (cumErrorL<-1*maxErr)
+      cumErrorL = -1*maxErr;
+
+    rateError = (error-lastSpeedErrorL)/elapsedTime;      // Derivative Error
+
+    double out = kpL*error+kiL*cumErrorL+kdL*rateError;   // PID output
+
+    lastSpeedErrorL = error;                              // remember current error
+    priorTimeL = currentTime;                             // remember current time
+    return out;                                           // return the needed motor speed. 
+}
+
+double drivePIDR(double curr)
+{
+    double rateError;
+    double error;
+    unsigned long currentTime;
+    unsigned long elapsedTime;
+  
+    currentTime = millis();                               //get current time
+    elapsedTime = (double)(currentTime - priorTimeR);      // compute elasped time for this control period
+
+    error = desVelR - curr;                                   // Error
+    cumErrorR += error*elapsedTime;                       // Cumulative Error(since we add this outside the loop, needs to be unique to the motor controlled)
+
+    // INTEGRAL WINDUP                                    // REMOVE WINDUP
+    if(cumErrorR>maxErr)
+    cumErrorR = maxErr;
+    else if (cumErrorR<-1*maxErr)
+      cumErrorR = -1*maxErr;
+
+    rateError = (error-lastSpeedErrorR)/elapsedTime;      // Derivative Error
+
+    double out = kpR*error+kiR*cumErrorR+kdR*rateError;   // PID output
+
+    lastSpeedErrorR = error;                              // remember current error
+    priorTimeR = currentTime;                             // remember current time
+    return out;                                           // return the needed motor speed. 
+}
+
+//==============Function to repair line following values & send data ====
+void LineFollow()
+{  
 linePosition = qtr.readLineBlack(sensorValues);
 
 //REPAIR NUMBER ONE:  every sensor reading under 300 is a noisy and messes up the lineposition measurment, so this for loop filters it out
 for (int i=0; i<= 7; i++){
-   if (sensorValues[i] <300){
+   if (sensorValues[i] <400){
        sensorValues[i]=0;     
     }
 }
@@ -84,55 +230,16 @@ if (linePosition < 1000 && linePosition > 0){
 //this loop uses the leftmost and rightmost sensors to determin if the robot is at a cross. If both of those sensors read high, then the robot is at a cross. 
 if ((sensorValues[7] > 500) && (sensorValues[0] > 500)){
   isCross = 1;
-}else{
+}
+else{
     isCross = 0;
   }
-
-//now linePosition returns a value between 1000 and 5000 that is proportonal to the sensor's position relative to the line, and the value isCross is set to 1 when both sensor 0 and 7 are over a line
-
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////END OF REPAIRS TO LINEPOSITION///////////////////////////////////////////////////////////////////////////
-
-  
-
-    recvWithStartEndMarkers(); //this function is in charge of taking a peice of data that looks like <17,16> 
-                               //turning it into a string looking like 17,16 and then setting newdata to true,
-                               //letting the rest of the program know a packet of data is ready to be analyzed, does all this without blocking
-    if (newData == true) { //newData will be true when recvWithStartEndMarkers(); has finished recieving a whole set of data from Rpi (a set of data is denoted as being containted between <>)
-      
-      strcpy(tempChar, receivedChars); //this line makes a copy of recievedChars for parsing in parseData, I do this becasue strtok() will alter any string I give it,I want to preserve the origonal data
-      parseData(); //right now parseData only parses a string of 2 numbers seperated by commas into floats
-                   //so the string 17.5,16 becomes two floats; 17.5 and 16
-
-
-      //below this comment and between setting newData to false is where you want to send the Rpi whatever data you want.
-      Serial.print(linePosition);
-      Serial.print(",");
-      Serial.print(isCross);
-      Serial.print(",");
-      Serial.print(leftMotor);
-      Serial.print(",");
-      Serial.println(rightMotor);
-      
-      newData = false;
-
-      
-      //sendDataToRpi(); //unused
-                   
-    }
-
-
-
-    commandMotors(); //we want this to happen outside of our newdata=true loop so it is never blocked
 }
 
 
-//======================================================
-
+//============= Data Parsing =======================
 
 void parseData(){
-  
-
 
   char *strtokIndexer; //doing char * allows strtok to increment across my string properly frankly im not sure why... something to do with pointers that I dont expect students to understand
 
@@ -154,14 +261,65 @@ void parseData(){
 
 //=======================================
 
-void commandMotors(){
+void CommandMotors(){
   m.setM1Speed(leftMotor);
   m.setM2Speed(rightMotor);
 }
 
+//USES KINEMATICS TO CONTROL SPEED
+void runPID(){
+  
+   unsigned long currentMillis = millis();
+      posRightCount = encoderRight.read(); 
+      posLeftCount = encoderLeft.read();
+      
+   if (currentMillis - previousMillis >= interval){
+     previousMillis = currentMillis;
+
+     delta_right = posRightCount - posRightCountLast;
+     delta_left = posLeftCount - posLeftCountLast;
+     
+     posRightRad = (((delta_right/encoderResolution)*(2*PI)) / (interval / 1000)); // Write expression to get Rad/sec. Pi is defined above FYI.
+     posLeftRad = (((delta_left/encoderResolution)*(2*PI)) / (interval/ 1000)); // Same - Rad/sec
+     
+     velRight = - (d/2) *posRightRad; // Now convert to get inches/sec (tangential velocity)
+     velLeft = - (d/2) * posLeftRad; // Same - Inches/sec
+
+     newVelRight = drivePIDR(velRight);
+     newVelLeft = drivePIDL(velLeft);  
+//      
+
+//      Serial.print(desVelL);
+//      Serial.print(',');
+//      Serial.print(desVelR);
+//      Serial.print(',');
+//      Serial.print(newVelLeft);
+//      Serial.print(',');
+//      Serial.println(newVelRight);
+      
+   
+
+
+
+
+      rightMotor = motorVelToSpeedCommand(newVelRight,rightMotorMax);
+      leftMotor = motorVelToSpeedCommand(newVelLeft,leftMotorMax);
+     
+      posRightCountLast = posRightCount;
+      posLeftCountLast = posLeftCount;
+      CommandMotors();
+      
+   }
+}
 
 //=========================================================
-
+//MAPS OUT MOTOR SPEED TO COMMAND
+int motorVelToSpeedCommand(double Vel, double maxVel){
+    int newSpeed = 0;
+    Vel = constrain(Vel,-1*maxVel, maxVel);
+    newSpeed = map(Vel,-1*maxVel, maxVel, -400, 400);
+    return newSpeed;
+}
 
 void recvWithStartEndMarkers() {
     static boolean recvInProgress = false;
