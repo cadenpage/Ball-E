@@ -21,17 +21,17 @@ float Kp = 1.0;
 float Ki = 0.0;
 float Kd = 0.0;
 
-uint8_t = multiP = 1;
-uint8_t = multiI = 1;
-uint8_t = multiD = 1;
+uint8_t multiP = 1;
+uint8_t multiI = 1;
+uint8_t multiD = 1;
 
 int lfspeed = 200;
 int previousError = 0;
 int IvalueAccum = 0;
 
 //Python interface route
-char route[] = {'F','R', 'F', 'L'}
-
+char route[] = {'F','R', 'F', 'L'};
+int stepIndex = 0;
 // --- Non-blocking turn variables ---
 bool turning = false;
 char turnDirection = ' ';
@@ -98,7 +98,7 @@ void robot_control() {
   // Intersection detection: all sensors over threshold
   bool intersection = true;
   for(uint8_t i=0;i<SensorCount;i++){
-    if(sensorValues[0] && SensorValues[7] < 2000){
+    if(sensorValues[0] && sensorValues[7] < 2000){
       intersection = false;
       break;
     }
@@ -141,7 +141,7 @@ void PID_Linefollow(int error){
 
 void commandMotors(int left, int right){
   if(left>=0){m.setM1Speed(leftMotor);
-  if(right>=0){m.setM2Speed(righttMotor);
+  if(right>=0){m.setM2Speed(rightMotor);
 }
   }
 }
