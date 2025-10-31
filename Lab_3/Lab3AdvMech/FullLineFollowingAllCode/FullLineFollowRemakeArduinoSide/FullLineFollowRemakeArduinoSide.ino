@@ -28,8 +28,8 @@ void setup() {
    qtr.setTypeRC(); //this allows us to read the line sensor from didgital pins
 
     //arduino pin sensornames I am using: 7, 18, 23 aka A5. note:PIN A1 DID NOT WORK WITH ANY SENSOR!!, 20, 21, 22, 8, 6. UNHOOK THE BLUE JUMPER LABELED BUZZER ON THE ASTAR or pin 6 will cause the buzzer to activate.
-//    qtr.setEmitterPins(4, 5);
-//     QTRReadMode::On;
+    qtr.setEmitterPins(4, 5);
+     QTRReadMode::On;
     qtr.setSensorPins((const uint8_t[]){7, 18, 23, 20, 21,22,8,6}, SensorCount); // changed pins - removed conflicts
 
     calibrateSensors();
@@ -105,7 +105,7 @@ if ((sensorValues[7] > 500) && (sensorValues[0] > 500)){
     recvWithStartEndMarkers(); //this function is in charge of taking a peice of data that looks like <17,16> 
                                //turning it into a string looking like 17,16 and then setting newdata to true,
                                //letting the rest of the program know a packet of data is ready to be analyzed, does all this without blocking
-    if (newData == true) { //newData will be true when recvWithStartEndMarkers(); has finished recieving a whole set of data from Rpi (a set of data is denoted as being containted between <>)
+//    if (newData == true) { //newData will be true when recvWithStartEndMarkers(); has finished recieving a whole set of data from Rpi (a set of data is denoted as being containted between <>)
       
       strcpy(tempChar, receivedChars); //this line makes a copy of recievedChars for parsing in parseData, I do this becasue strtok() will alter any string I give it,I want to preserve the origonal data
       parseData(); //right now parseData only parses a string of 2 numbers seperated by commas into floats
@@ -143,7 +143,7 @@ if ((sensorValues[7] > 500) && (sensorValues[0] > 500)){
       
       //sendDataToRpi(); //unused
                    
-    }
+//    }
 
 
 

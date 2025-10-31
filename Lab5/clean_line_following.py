@@ -216,7 +216,8 @@ class LineFollower(object):
 # ============================================================
 
 if __name__ == '__main__':
-    ser = serial.Serial('/dev/ttyACM0', 115200)
+    port = '/dev/ttyACM0'
+    ser = serial.Serial(port, 115200)
     ser.reset_input_buffer()
 
     leftMotor = 0
@@ -225,7 +226,7 @@ if __name__ == '__main__':
 
     while True:
         if ser.in_waiting <= 0:
-            sendString('/dev/ttyACM0', 115200, f'<{leftMotor},{rightMotor}>', 0.0001)
+            sendString(port, 115200, f'<{leftMotor},{rightMotor}>', 0.0001)
             continue
 
         raw = ser.readline().decode('utf-8').strip()
@@ -236,7 +237,11 @@ if __name__ == '__main__':
             z = int(parts[2])
             sensors = [int(val) for val in parts[3:11]]
 
+            
+
+
             print([x, y, z, sensors, "Crosses:", line_follower.cross_count, "Motors:", leftMotor, rightMotor])
+            # print(y,sensors, leftMotor,rightMotor)
 
             # ---------- Cross detection ----------
             now = time.time()
@@ -287,4 +292,4 @@ if __name__ == '__main__':
             print("packet dropped")
 
         # ---------- Send Motor Command ----------
-        sendString('/dev/ttyACM0', 115200, f'<{leftMotor},{rightMotor}>', 0.0001)
+        sendString(port, 115200, f'<{leftMotor},{rightMotor}>', 0.0001)

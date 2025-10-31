@@ -84,26 +84,23 @@ bool start = true;
 void setup() {
   Serial.begin(115200);
   
-    m.setM1Speed(0);  // MAX IS 400 FYI. You should set this first to see max speed in in/s after you convert the values
-    m.setM2Speed(0);  
+    m.setM1Speed(100);  // MAX IS 400 FYI. You should set this first to see max speed in in/s after you convert the values
+    m.setM2Speed(100);  
     unsigned long startTime = millis();
   
-
+    //pinMode(3, OUTPUT); //left motor
+   // pinMode(2,OUTPUT); //left motor
     qtr.setTypeRC(); //this allows us to read the line sensor from didgital pins
 
     //arduino pin sensornames I am using: 7, 18, 23 aka A5. note:PIN A1 DID NOT WORK WITH ANY SENSOR!!, 20, 21, 22, 8, 6. UNHOOK THE BLUE JUMPER LABELED BUZZER ON THE ASTAR or pin 6 will cause the buzzer to activate.
-//    qtr.setEmitterPins(4, 5);
-//     QTRReadMode::On;
+    qtr.setEmitterPins(4, 5);
+     QTRReadMode::On;
     qtr.setSensorPins((const uint8_t[]){7, 18, 23, 20, 21,22,8,6}, SensorCount); // changed pins - removed conflicts
 
     calibrateSensors();
     qtr.setEmitterPin(4);//et away with a single emitter pin providing power to both emitters originally (4,5) for future reference
     QTRReadMode::On; //emitters on measures active reflectance instead of ambient light levels, better becasue the ambient light level will change as the robot moves around the board but the reflectance levels will not
     Serial.println("<Arduino is ready>");
-    cumErrorL = cumErrorR = 0;
-    priorTimeL = priorTimeR = millis();
-  
-    lastSpeedErrorL = lastSpeedErrorR = 0;
 }
 
 
@@ -123,11 +120,11 @@ void loop() {
 
 
       //below this comment and between setting newData to false is where you want to send the Rpi whatever data you want.
-      Serial.print(linePosition);
-      Serial.print(",");
+//      Serial.print(linePosition);
+//      Serial.print(",");
       Serial.print(isCross);
       Serial.print(",");
-      Serial.print(leftMotor);
+//      Serial.print(leftMotor);
       Serial.print(",");
       Serial.print(sensorValues[0]);
       Serial.print(",");
@@ -143,9 +140,9 @@ void loop() {
       Serial.print(",");
       Serial.print(sensorValues[6]);
       Serial.print(",");
-      Serial.print(sensorValues[7]);
-      Serial.print(",");
-      Serial.println(rightMotor);
+      Serial.println(sensorValues[7]);
+//      Serial.print(",");
+//      Serial.println(rightMotor);
 
       newData = false;
 
@@ -153,6 +150,7 @@ void loop() {
       //sendDataToRpi(); //unused
                    
     }
+    delay(50);
 runPID();
 
 }
@@ -199,13 +197,13 @@ void runPID(){
      newVelLeft = drivePIDL(velLeft);  
 //      
 
-      Serial.print(desVelL);
-      Serial.print(',');
-      Serial.print(desVelR);
-      Serial.print(' ||| ');
-      Serial.print(newVelLeft);
-      Serial.print(',');
-      Serial.println(newVelRight);
+//      Serial.print(desVelL);
+//      Serial.print(',');
+//      Serial.print(desVelR);
+//      Serial.print(',');
+//      Serial.print(newVelLeft);
+//      Serial.print(',');
+//      Serial.println(newVelRight);
       
    
 
@@ -226,17 +224,10 @@ void runPID(){
 //PID FUNCTIONS DONT EDIT
 //===========================================================================================================================
 double drivePIDL(double curr){
-//    if (firstPIDCall){
-//      priorTimeL = millis();
-//      cumErrorL = 0;
-//      lastSpeedErrorL = 0;
-//      return 0;
-//    }
     double rateError;
     double error;
     unsigned long currentTime;
     unsigned long elapsedTime;
-    
   
     currentTime = millis();                               //get current time
     elapsedTime = (double)(currentTime - priorTimeL);     // compute elasped time for this control period
@@ -290,7 +281,9 @@ double drivePIDR(double curr){
 //===========================================================================================================================
 
 void parseData(){
-   
+   cumErrorL = cumErrorR = 0;
+  
+    lastSpeedErrorL = lastSpeedErrorR = 0;
   
 
 
