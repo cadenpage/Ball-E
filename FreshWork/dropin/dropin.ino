@@ -64,6 +64,9 @@ double lastErrL = 0.0, lastErrR = 0.0;
 double intErrL  = 0.0, intErrR  = 0.0;
 double intLimit = 100.0; // anti-windup clamp
 
+const uint8_t TELEMETRY_DECIM = 20;
+uint8_t telemetryCounter = 0;
+
 // ===== Prototypes =====
 void LineFollow();
 void recvWithStartEndMarkers();
@@ -156,14 +159,20 @@ void loop() {
     posLeftCountLast  = cL;
 
     // Telemetry (one line; easy for Python .readline())
+    if (++telemetryCounter >=TELEMETRY_DECIM) {
+      telemetryCounter = 0;
+      
+    
     Serial.print(linePosition); Serial.print(',');
     Serial.print(isCross);      Serial.print(',');
     Serial.print(pwmL);         Serial.print(',');
     Serial.print(pwmR);         Serial.print(',');
-    Serial.print(velLeft, 3);   Serial.print(',');
-    Serial.print(velRight, 3);  Serial.print(',');
-    Serial.print(desVelL, 3);   Serial.print(',');
-    Serial.println(desVelR, 3);
+    Serial.print(velLeft, 1);   Serial.print(',');
+    Serial.print(velRight, 1);  Serial.print(',');
+    Serial.print(desVelL, 1);   Serial.print(',');
+    Serial.println(desVelR, 1);
+    
+    }
   }
 }
 
@@ -303,4 +312,3 @@ void calibrateSensors() {
   for (uint16_t i = 0; i < 400; i++) qtr.calibrate();
   digitalWrite(LED_BUILTIN, LOW);
 }
-

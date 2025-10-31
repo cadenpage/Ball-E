@@ -18,6 +18,7 @@ if __name__ == '__main__':
     t0 = time.time()
     try:
         while True:
+            
             # Send desired velocities as <L,R>
             ser.write(f"<{leftMotor},{rightMotor}>\n".encode("ascii"))
 
