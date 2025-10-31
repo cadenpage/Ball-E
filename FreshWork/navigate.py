@@ -8,7 +8,7 @@ baud_rate = 115200
 
 ser = serial.Serial(arduino_port, baud_rate, timeout=1)
 time.sleep(2)  # wait for Arduino reset
-
+#hi
 # Example route sent dynamically
 route = ["F", "R", "F", "L"]
 
