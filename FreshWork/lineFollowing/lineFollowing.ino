@@ -121,17 +121,17 @@ void loop() {
       Serial.print(",");
       Serial.print(isCross);
       Serial.print(",");
-      Serial.print(leftMotor);
+      Serial.print(desVelL);
       Serial.print(",");
-      Serial.println(rightMotor);
+      Serial.println(desVelR);
       
       newData = false;
                    
 //    }
 
     runPID(); //we want this to happen outside of our newdata=true loop so it is never blocked
-
-}
+ 
+    }    
 }
 
 //PID FUNCTIONS DONT EDIT
@@ -245,12 +245,12 @@ void parseData(){
 
   
   strtokIndexer = strtok(tempChar,","); //sets strtokIndexer = to everything up to the first comma in tempChar /0 //this line is broken
-  leftMotor = atoi(strtokIndexer); //converts strtokIndexer into a int
-  
+  desVelL = atoi(strtokIndexer); //converts strtokIndexer into a int
+//  leftMotor = atoi(strtokIndexer);
 
   strtokIndexer= strtok(NULL, ","); //setting the first input to null causes strtok to continue looking for commas in tempChar starting from where it left off, im not really sure why 
-  rightMotor = atoi(strtokIndexer);
-
+  desVelR = atoi(strtokIndexer);
+//  rightMotor = atoi(strtokIndexer);
   
   //now that we have extracted the data from the Rpi as floats, we can use them to command actuators somewhere else in the code
   

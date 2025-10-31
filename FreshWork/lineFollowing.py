@@ -8,6 +8,7 @@ rightMotor=int(10)
 MID = 3600
 THRESH = 600
 TURNING = False
+pos = MID
 
 if __name__ == '__main__':
     ser=serial.Serial('/dev/ttyACM0',115200)
@@ -19,7 +20,7 @@ if __name__ == '__main__':
         if ser.in_waiting > 0:  #we wait until the arduino has sent something to us before we try to read anything from the serial port.
                 
                 line = ser.readline().decode('utf-8')
-                print(line)
+                print(line)    
                 line=line.split(',')
 
                 if TURNING:

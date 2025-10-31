@@ -36,7 +36,7 @@ char route[] = {'F','R', 'F', 'L'}
 bool turning = false;
 char turnDirection = ' ';
 unsigned long turnStartTime = 0;
-unsigned long turnDuration = 0;
+unsigned long turnDuration = 10;
 
 // --- Function declarations ---
 void robot_control();
@@ -47,8 +47,6 @@ void startTurn(char dir, unsigned long duration_ms);
 boolean newData = false;
 
 void setup() {
-   pinMode(3, OUTPUT); //left motor
-   pinMode(2,OUTPUT); //left motor
 
     Serial.begin(115200);
     m.setM1Speed(0);
@@ -67,7 +65,7 @@ void setup() {
 //====================================================
 
 void loop() {
-//////REPAIRING THE READLINEBLACK FUNCTION /////////////////////////////////////
+
 linePosition = qtr.readLineBlack(sensorValues);
 
 //check serial commands for nav
@@ -144,6 +142,8 @@ void PID_Linefollow(int error){
 void commandMotors(int left, int right){
   if(left>=0){m.setM1Speed(leftMotor);
   if(right>=0){m.setM2Speed(righttMotor);
+}
+  }
 }
 
 void startTurn(char dir, unsigned long duration_ms){
