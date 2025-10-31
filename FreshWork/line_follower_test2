@@ -1,0 +1,170 @@
+#include <QTRSensors.h>
+#include <AStar32U4Motors.h>
+#include <Encoder.h>
+#include <math.h>
+
+AStar32U4Motors m; // motor assignment
+QTRSensors qtr;
+
+const uint8_t SensorCount = 8;
+uint16_t sensorValues[SensorCount];
+uint16_t linePosition;
+
+const byte numChars = 32;
+char receivedChars[numChars];
+char tempChar[numChars]; // temporary array used for parsing
+
+// motor command variables
+int leftMotor = 0;
+int rightMotor = 0;
+int isCross = 0;
+
+// PID parameters
+float Kp = 1.0;
+float Ki = 0.0;
+float Kd = 0.0;
+
+uint8_t multiP = 1;
+uint8_t multiI = 1;
+uint8_t multiD = 1;
+
+int lfspeed = 200;
+int previousError = 0;
+int IvalueAccum = 0;
+
+// Python interface route
+char route[] = {'F', 'R', 'F', 'L'};
+int stepIndex = 0;
+
+// --- Non-blocking turn variables ---
+bool turning = false;
+char turnDirection = ' ';
+unsigned long turnStartTime = 0;
+unsigned long turnDuration = 10;
+
+// --- Function declarations ---
+void robot_control();
+void PID_Linefollow(int error);
+void commandMotors(int left, int right);
+void startTurn(char dir, unsigned long duration_ms);
+void calibrateSensors();
+
+boolean newData = false;
+
+void setup() {
+  Serial.begin(115200);
+  m.setM1Speed(0);
+  m.setM2Speed(0);
+
+  qtr.setTypeRC();
+  qtr.setSensorPins((const uint8_t[]){7, 18, 23, 20, 21, 22, 8, 6}, SensorCount);
+  qtr.setEmitterPin(4);
+
+  calibrateSensors();
+
+  Serial.println("<Arduino is ready>");
+}
+
+//====================================================
+
+void loop() {
+  linePosition = qtr.readLineBlack(sensorValues);
+
+  // check serial commands for nav
+  if (Serial.available()) {
+    char cmd = Serial.read();
+    if (!turning) { // Ignore new commands while turning
+      if (cmd == 'L') startTurn('L', 400);
+      else if (cmd == 'R') startTurn('R', 400);
+      else if (cmd == 'F') startTurn('F', 300);
+    }
+  }
+
+  // Handle ongoing turn
+  if (turning && millis() - turnStartTime >= turnDuration) {
+    turning = false;
+    commandMotors(0, 0); // stop after turn
+  }
+
+  // PID line following runs continuously if not turning
+  if (!turning) {
+    robot_control();
+  }
+}
+
+// ====================================================
+
+void robot_control() {
+  uint16_t position = qtr.readLineBlack(sensorValues);
+  int error = 2000 - position;
+
+  // Intersection detection: all sensors over threshold
+  bool intersection = true;
+  for (uint8_t i = 0; i < SensorCount; i++) {
+    if (sensorValues[i] < 2000) {
+      intersection = false;
+      break;
+    }
+  }
+
+  // Handle intersection without blocking
+  if (intersection && !turning) {
+    if (stepIndex < (sizeof(route) / sizeof(route[0]))) {
+      char move = route[stepIndex++];
+      if (move == 'L') startTurn('L', 400);
+      else if (move == 'R') startTurn('R', 400);
+      else if (move == 'F') startTurn('F', 300);
+    }
+  }
+
+  PID_Linefollow(error);
+}
+
+void PID_Linefollow(int error) {
+  int P = error;
+  IvalueAccum += error;
+  int D = error - previousError;
+
+  float Pvalue = (Kp / pow(10, multiP)) * P;
+  float Ivalue = (Ki / pow(10, multiI)) * IvalueAccum;
+  float Dvalue = (Kd / pow(10, multiD)) * D;
+
+  float PIDvalue = Pvalue + Ivalue + Dvalue;
+  previousError = error;
+
+  int lsp = lfspeed - PIDvalue;
+  int rsp = lfspeed + PIDvalue;
+
+  // Clamp values
+  lsp = constrain(lsp, -300, 300);
+  rsp = constrain(rsp, -300, 300);
+
+  commandMotors(lsp, rsp);
+}
+
+void commandMotors(int left, int right) {
+  m.setM1Speed(left);
+  m.setM2Speed(right);
+}
+
+void startTurn(char dir, unsigned long duration_ms) {
+  turning = true;
+  turnDirection = dir;
+  turnStartTime = millis();
+  turnDuration = duration_ms;
+
+  if (dir == 'R') commandMotors(200, -200);
+  else if (dir == 'L') commandMotors(-200, 200);
+  else if (dir == 'F') commandMotors(180, 180);
+}
+
+//==================================================================
+
+void calibrateSensors() {
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
+  for (uint16_t i = 0; i < 400; i++) {
+    qtr.calibrate();
+  }
+  digitalWrite(LED_BUILTIN, LOW);
+}
