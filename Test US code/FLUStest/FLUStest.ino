@@ -3,8 +3,8 @@
 // =========================
 
 // FRONT ultrasonic sensor
-#define TRIG_FRONT 4
-#define ECHO_FRONT 7
+#define TRIG_FRONT 14
+#define ECHO_FRONT 17
 
 // LEFT ultrasonic sensor
 #define TRIG_LEFT 12
