@@ -9,7 +9,7 @@ DT = 1.0 / SEND_HZ
 # desired linear speeds in inches/sec (example values)
 leftMotor  = 10.0
 rightMotor = 10.0
-BASE = 10.0
+BASE = 15.0
 
 # --- minimal line-following knobs ---
 MID = 3000       # center of linePosition scale (your Arduino sends ~1000..5000)
@@ -23,7 +23,7 @@ if __name__ == '__main__':
     t0 = time.time()
     try:
         while True:
-            
+
             # Send desired velocities as <L,R>
             ser.write(f"<{leftMotor},{rightMotor}>\n".encode("ascii"))
 
