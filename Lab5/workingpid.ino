@@ -6,16 +6,16 @@ AStar32U4Motors m; //read the documentation of this library to understand what f
 
 #define PI 3.141592653589
 
-int leftMotor; // COMMANDED MOTOR SPEEDS
-int rightMotor;
+int leftMotor = 0; // COMMANDED MOTOR SPEEDS
+int rightMotor = 0;
 
-double leftMotorMax = 0; // **students should find this variable themselves**
-double rightMotorMax = 0;
+double leftMotorMax = 36; // **students should find this variable themselves**
+double rightMotorMax = 30;
 
 const int encoderRightPinA = 15;
 const int encoderRightPinB = 16;
 
-const int encoderLeftPinA = 8; 
+const int encoderLeftPinA = 19; 
 const int encoderLeftPinB = 11;
 
 Encoder encoderRight(encoderRightPinA,encoderRightPinB);
@@ -25,6 +25,8 @@ int encoderResolution = 1440; // counts per rev
 double d = 2.7559055; //wheel diameter in inches
 
 int posLeftCount = 0;
+double delta_right = 0.0;
+double delta_left = 0.0;
 int posRightCount = 0;
 int posLeftCountLast = 0;
 int posRightCountLast = 0;
@@ -36,36 +38,43 @@ double newVelLeft = 0; // this will be omegaLeft*d/2;
 double newVelRight = 0; // this will be omegaRight*d/2 will be in inches per sec;
 
 // MOTOR LOOP CONSTANTS
-double interval = 5.0; // 5 ms means 200Hz loop
+double interval = 5; // 5 ms means 200Hz loop
 unsigned long previousMillis = 0;
 unsigned long priorTimeL,priorTimeR; // We need to keep track of time for each PID controller separately
 double lastSpeedErrorL,lastSpeedErrorR; //same with error
 double cumErrorL, cumErrorR;
 double maxErr = 20; // chosen arbitrarily for now, students can tune. 
-double desVelL = 0.0; // will be in inches per sec
-double desVelR = 0.0;
+double desVelL = 10; // will be in inches per sec
+double desVelR = 10;
 
 // PID CONSTANTS
 // LEFT MOTOR - you need to find values. FYI I found good responses with Kp ~ 10x bigger than Ki, and ~3x bigger than Kd. My biggest value was <2.
-double kpL = 0.0;
-double kiL = 0.0;
-double kdL = 0.0;
+double kpL = 3;
+double kiL = .7;
+double kdL = 1;
 // Right MOTOR - assumes we need to tune them differently
-double kpR = 0.0;
-double kiR = 0.0;
-double kdR = 0.0;                                                                                                                                                                                              ;
+double kpR = 3;
+double kiR = .7;
+double kdR = 1;
+
+double speedmag = 15; //in/s
+bool start = true;
 
 //=====================================================
 
+
+
 void setup() {
   Serial.begin(115200);
-    m.setM1Speed(0);  // MAX IS 400 FYI. You should set this first to see max speed in in/s after you convert the values
-    m.setM2Speed(0);  
- 
-
+  
+    m.setM1Speed(400);  // MAX IS 400 FYI. You should set this first to see max speed in in/s after you convert the values
+    m.setM2Speed(400);  
+    unsigned long startTime = millis();
 }
 
+
 void loop() {
+    
 
    unsigned long currentMillis = millis();
 
@@ -76,37 +85,39 @@ void loop() {
       previousMillis = currentMillis;
 
 
-     posRightRad = 0; // Write expression to get Rad/sec. Pi is defined above FYI.
-     posLeftRad = 0; // Same - Rad/sec
-     velRight = 0; // Now convert to get inches/sec (tangential velocity)
-     velLeft = 0; // Same - Inches/sec
+     delta_right = posRightCount - posRightCountLast;
+     delta_left = posLeftCount - posLeftCountLast;
+     
+     posRightRad = (((delta_right/encoderResolution)*(2*PI)) / (interval / 1000)); // Write expression to get Rad/sec. Pi is defined above FYI.
+     posLeftRad = (((delta_left/encoderResolution)*(2*PI)) / (interval/ 1000)); // Same - Rad/sec
+     
+     velRight = - (d/2) *posRightRad; // Now convert to get inches/sec (tangential velocity)
+     velLeft = - (d/2) * posLeftRad; // Same - Inches/sec
 
-     // HERE WILL DO PID AND CREATE NEW MOTOR COMMAND MAPPED TO -400-400 based on max. 
-     // COMMENT THIS SECTION OUT TO FIND YOUR MOTORS MAX SPEEDS, 
      newVelRight = drivePIDR(velRight);
-     newVelLeft = drivePIDL(velLeft);
+     newVelLeft = drivePIDL(velLeft);  
 
-      // Just some print statements to prove it works. You can comment this out.
+      
       Serial.print("RIGHT: ");
       Serial.print(velRight);
       Serial.print(',');
-      Serial.print(newVelRight);
+//      Serial.print(newVelRight);
       Serial.print("  ===  LEFT: ");
-      Serial.print(velLeft);
+      Serial.println(velLeft);
       Serial.print(',');
-      Serial.println(newVelLeft);
+
 
       rightMotor = motorVelToSpeedCommand(newVelRight,rightMotorMax);
       leftMotor = motorVelToSpeedCommand(newVelLeft,leftMotorMax);
-      /// COMMENT OUT TO HERE FOR FINDING MAX MOTOR SPEED AT 400, You need to add the print statements to get the max speed. 
-      
      
-     posRightCountLast = posRightCount;
-     posLeftCountLast = posLeftCount;
-    
+      posRightCountLast = posRightCount;
+      posLeftCountLast = posLeftCount;
 
-     CommandMotors();
+
    }
+      
+//
+     CommandMotors();
 }
 
 void CommandMotors(){  

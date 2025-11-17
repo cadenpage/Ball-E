@@ -1,41 +1,54 @@
- #include <QTRSensors.h>
+#include <QTRSensors.h>
 #include <AStar32U4Motors.h>
+#include <Encoder.h>
 AStar32U4Motors m; //read the documentation of this library to understand what functions to use to drive the motors and how to use them
 QTRSensors qtr;
-const uint8_t SensorCount = 8;
+
+//======Line Following Variables=======
+const uint8_t SensorCount = 8; // Line Follower Sensor Declaration
 uint16_t sensorValues[SensorCount];
+int threshold[SensorCount];
 uint16_t linePosition;
 
-const byte numChars = 32;
+const byte numChars = 32; // Array creation for parsing i think?
 char receivedChars[numChars];
 char tempChar[numChars]; // temporary array used for parsing
-
 
 //motor command variables
 int leftMotor=0; //int leftMotor
 int rightMotor=0;
 int isCross=0;
+boolean newData = false; //newData boolean used for turning parsing on and off
 
-  
-boolean newData = false;
 
 //=====================================================
 
 void setup() {
-   pinMode(3, OUTPUT); //left motor WHAT IS GOING ON HERE
+   pinMode(3, OUTPUT); //left motor not sure if this stuff is necessary
    pinMode(2,OUTPUT); //left motor
-   Serial.begin(115200);
-   qtr.setTypeRC(); //this allows us to read the line sensor from didgital pins
+    Serial.begin(115200);
+    qtr.setTypeRC(); //this allows us to read the line sensor from digital pins -- probably cap
 
     //arduino pin sensornames I am using: 7, 18, 23 aka A5. note:PIN A1 DID NOT WORK WITH ANY SENSOR!!, 20, 21, 22, 8, 6. UNHOOK THE BLUE JUMPER LABELED BUZZER ON THE ASTAR or pin 6 will cause the buzzer to activate.
-    qtr.setEmitterPins(4, 5);
-     QTRReadMode::On;
-    qtr.setSensorPins((const uint8_t[]){7, 18, 23, 20, 21,22,8,6}, SensorCount); // changed pins - removed conflicts
+//    qtr.setEmitterPins(4, 5);
+//     QTRReadMode::On;
+    qtr.setSensorPins((const uint8_t[]){7, 18, 23, 20, 21, 22, 8, 6}, SensorCount);
 
     calibrateSensors();
-    qtr.setEmitterPins(4,16);//et away with a single emitter pin providing power to both emitters originally (4,5) for future reference
-    QTRReadMode::On; //emitters on measures active reflectance instead of ambient light levels, better becasue the ambient light level will change as the robot moves around the board but the reflectance levels will not
+    qtr.setEmitterPin(4); //can get away with a single emitter pin providing power to both emitters
+     QTRReadMode::On; //emitters on measures active reflectance instead of ambient light levels, better becasue the ambient light level will change as the robot moves around the board but the reflectance levels will not
     Serial.println("<Arduino is ready>");
+    for (uint8_t i = 0; i < SensorCount; i++)
+    {
+    threshold[i] = (qtr.calibrationOn.minimum[i] + qtr.calibrationOn.maximum[i])/2;
+    Serial.print(threshold[i]);
+    Serial.print(" ");
+    Serial.print(qtr.calibrationOn.maximum[i]);
+    Serial.print(" ");
+    Serial.println(qtr.calibrationOn.minimum[i]);
+    }
+
+    Serial.println();
 }
 
 //====================================================
@@ -43,23 +56,12 @@ void setup() {
 void loop() {
 
 //////////////////////////////////////////REPAIRING THE READLINEBLACK FUNCTION SO THE LINEPOSITION VARIABLE IS ACTUALLY USEFULL FOR STUDENTS//////////////////////////////////////////////
-//
-//Quick Debug test
-//
-//  qtr.read(sensorValues);
-//
-//  for (int i = 0; i < SensorCount; i++) {
-//    Serial.print(sensorValues[i]);
-//    Serial.print("\t");
-//  }
-//  Serial.println();
-//  delay(1000);
 
 linePosition = qtr.readLineBlack(sensorValues);
 
 //REPAIR NUMBER ONE:  every sensor reading under 300 is a noisy and messes up the lineposition measurment, so this for loop filters it out
 for (int i=0; i<= 7; i++){
-   if (sensorValues[i] <300){
+   if (sensorValues[i] < 500){
        sensorValues[i]=0;     
     }
 }
@@ -105,7 +107,7 @@ if ((sensorValues[7] > 500) && (sensorValues[0] > 500)){
     recvWithStartEndMarkers(); //this function is in charge of taking a peice of data that looks like <17,16> 
                                //turning it into a string looking like 17,16 and then setting newdata to true,
                                //letting the rest of the program know a packet of data is ready to be analyzed, does all this without blocking
-//    if (newData == true) { //newData will be true when recvWithStartEndMarkers(); has finished recieving a whole set of data from Rpi (a set of data is denoted as being containted between <>)
+    if (newData == true) { //newData will be true when recvWithStartEndMarkers(); has finished recieving a whole set of data from Rpi (a set of data is denoted as being containted between <>)
       
       strcpy(tempChar, receivedChars); //this line makes a copy of recievedChars for parsing in parseData, I do this becasue strtok() will alter any string I give it,I want to preserve the origonal data
       parseData(); //right now parseData only parses a string of 2 numbers seperated by commas into floats
@@ -119,31 +121,14 @@ if ((sensorValues[7] > 500) && (sensorValues[0] > 500)){
       Serial.print(",");
       Serial.print(leftMotor);
       Serial.print(",");
-   //   Serial.println(rightMotor);
-      Serial.print(sensorValues[0]);
-      Serial.print(",");
-      Serial.print(sensorValues[1]);
-      Serial.print(",");
-      Serial.print(sensorValues[2]);
-      Serial.print(",");
-      Serial.print(sensorValues[3]);
-      Serial.print(",");
-      Serial.print(sensorValues[4]);
-      Serial.print(",");
-      Serial.print(sensorValues[5]);
-      Serial.print(",");
-      Serial.print(sensorValues[6]);
-      Serial.print(",");
-      Serial.print(sensorValues[7]);
-      Serial.print(",");
       Serial.println(rightMotor);
-
+      delay(50);
       newData = false;
 
       
       //sendDataToRpi(); //unused
                    
-//    }
+    }
 
 
 
