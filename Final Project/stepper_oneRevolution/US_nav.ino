@@ -39,14 +39,27 @@ boolean newData = false;
 void setup() {
    pinMode(3, OUTPUT); //left motor
    pinMode(2,OUTPUT); //left motor
-    Serial.begin(115200);
-    qtr.setTypeRC(); //this allows us to read the line sensor from didgital pins
+    // Serial.begin(115200);
+    // qtr.setTypeRC(); //this allows us to read the line sensor from didgital pins
 
-    //arduino pin sensornames I am using: 7, 18, 19, 20, 21, 22, 23, 6. UNHOOK THE BLUE JUMPER LABELED BUZZER ON THE ASTAR or pin 6 will cause the buzzer to activate.
-    qtr.setSensorPins((const uint8_t[]){7, 18, 19, 20, 21, 22, 23, 6}, SensorCount);
 
-    calibrateSensors();
+    // //arduino pin sensornames I am using: 7, 18, 19, 20, 21, 22, 23, 6. UNHOOK THE BLUE JUMPER LABELED BUZZER ON THE ASTAR or pin 6 will cause the buzzer to activate.
+    // qtr.setSensorPins((const uint8_t[]){7, 18, 19, 20, 21, 22, 23, 6}, SensorCount);
+
+    // calibrateSensors();
+      // Set sensor pins
+  pinMode(TRIG_FRONT, OUTPUT);
+  pinMode(ECHO_FRONT, INPUT);
+
+  pinMode(TRIG_LEFT, OUTPUT);
+  pinMode(ECHO_LEFT, INPUT);
+
+  pinMode(TRIG_RIGHT, OUTPUT);
+  pinMode(ECHO_RIGHT, INPUT);
+
+  
     Serial.println("<Arduino is ready>");
+    delay(500);
 }
 
 //====================================================
@@ -73,7 +86,22 @@ void loop() {
 
 
 //======================================================
+float readUltrasonic(int trigPin, int echoPin) {
+  // trigger pulse
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(4);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
 
+  // wait for echo, 30 ms timeout
+  long duration = pulseIn(echoPin, HIGH, 30000);  
+
+  if (duration == 0) return -1;  // No echo detected
+
+  return (duration * 0.0343f) / 2.0f;
+}
+//======================================================
 
 void parseData(){
 
@@ -128,6 +156,27 @@ void sendDataToRpi() {
   //iscross=0;
   //} else {
      Serial.println(linePosition);
+     
+    float frontDist = readUltrasonic(TRIG_FRONT, ECHO_FRONT);
+    float leftDist  = readUltrasonic(TRIG_LEFT, ECHO_LEFT);
+    float rightDist = readUltrasonic(TRIG_RIGHT, ECHO_RIGHT);
+
+
+  if (frontDist < 0) Serial.print("No Echo");
+  else Serial.print(frontDist);
+  Serial.print(',');
+
+  if (leftDist < 0) Serial.print("No Echo");
+  else Serial.print(leftDist);
+  SensorCount
+
+  Serial.print(',');
+  if (rightDist < 0) Serial.print("No Echo");
+  else Serial.print(rightDist);
+
+  Serial.println();
+
+  delay(250);
   //}
 newData = false;
 
