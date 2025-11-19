@@ -1,5 +1,10 @@
 #include <QTRSensors.h>
+#include <Encoder.h>
+#include <AStar32U4Motors.h>
+
 QTRSensors qtr;
+AStar32U4Motors m;
+
 const uint8_t SensorCount = 8;
 uint16_t sensorValues[SensorCount];
 uint16_t linePosition;
@@ -12,9 +17,7 @@ uint16_t linePosition;
 #define TRIG_LEFT 12
 #define ECHO_LEFT 1    // TX pin (OK for now)
 
-// RIGHT Sensor
-#define TRIG_RIGHT 0   // RX pin (OK for now)
-#define ECHO_RIGHT 19
+
 
 
 const byte numChars = 32;
@@ -37,10 +40,14 @@ const int FULL_SPIN_TIME = 4000;  // Time for full 360 degree spin in ms
 #define PI 3.141592653589
 
 // Encoder configuration
-const int encoderRightPinA = 15;
-const int encoderRightPinB = 16;
 const int encoderLeftPinA = 8;
 const int encoderLeftPinB = 11;
+const int encoderRightPinA = 15;
+const int encoderRightPinB = 16;
+
+// Create encoder objects
+Encoder encoderLeft(encoderLeftPinA, encoderLeftPinB);
+Encoder encoderRight(encoderRightPinA, encoderRightPinB);
 
 // Encoder and wheel parameters
 int encoderResolution = 1440;  // counts per revolution
@@ -51,9 +58,6 @@ double wheelCircumference = PI * wheelDiameter;  // circumference in inches
 double robotTrackWidth = 5.0;  // distance between left and right wheels in inches (ADJUST THIS VALUE)
 
 // Position tracking variables
-double xPosition = 0.0;  // x position in inches
-double yPosition = 0.0;  // y position in inches
-double robotAngle = 0.0;  // robot heading angle in radians (0 = facing forward)
 int prevLeftEncoderCount = 0;
 int prevRightEncoderCount = 0;
 
@@ -79,8 +83,6 @@ void setup() {
   pinMode(TRIG_LEFT, OUTPUT);
   pinMode(ECHO_LEFT, INPUT);
 
-  pinMode(TRIG_RIGHT, OUTPUT);
-  pinMode(ECHO_RIGHT, INPUT);
 
   
     Serial.println("<Arduino is ready>");
@@ -133,64 +135,25 @@ float readUltrasonic(int trigPin, int echoPin) {
 }
 //======================================================
 
-void updatePositionFromEncoders(int leftEncoderCount, int rightEncoderCount) {
-  // Calculate distance traveled by each wheel since last update
-  int deltaLeftEncoder = leftEncoderCount - prevLeftEncoderCount;
-  int deltaRightEncoder = rightEncoderCount - prevRightEncoderCount;
-  
-  // Convert encoder counts to distance traveled in inches
-  double leftDistance = (deltaLeftEncoder / (double)encoderResolution) * wheelCircumference;
-  double rightDistance = (deltaRightEncoder / (double)encoderResolution) * wheelCircumference;
-  
-  // Average distance traveled (for forward motion)
-  double avgDistance = (leftDistance + rightDistance) / 2.0;
-  
-  // Difference in distances (for rotation)
-  double deltaDistance = rightDistance - leftDistance;
-  
-  // Update robot angle (rotate based on difference between wheels)
-  // Robot rotates around its center, so each wheel contributes half the rotation
-  robotAngle += deltaDistance / robotTrackWidth;
-  
-  // Update position based on current angle and average distance
-  xPosition += avgDistance * cos(robotAngle);
-  yPosition += avgDistance * sin(robotAngle);
-  
-  // Remember encoder counts for next update
-  prevLeftEncoderCount = leftEncoderCount;
-  prevRightEncoderCount = rightEncoderCount;
-}
-
-void resetPosition() {
-  // Reset position to origin
-  xPosition = 0.0;
-  yPosition = 0.0;
-  robotAngle = 0.0;
-  prevLeftEncoderCount = 0;
-  prevRightEncoderCount = 0;
-}
-
-//======================================================
-
 void parseData(){
-
-
-  char *strtokIndexer; //doing char * allows strtok to increment across my string properly frankly im not sure why... something to do with pointers that I dont expect students to understand
-
+  char *strtokIndexer;
   
-  strtokIndexer = strtok(tempChar,","); //sets strtokIndexer = to everything up to the first comma in tempChar /0 //this line is broken
-  currentState = atoi(strtokIndexer); //converts strtokIndexer into a int for state
+  strtokIndexer = strtok(tempChar,",");
+  currentState = atoi(strtokIndexer);
   
-
-  strtokIndexer= strtok(NULL, ","); //setting the first input to null causes strtok to continue looking for commas in tempChar starting from where it left off, im not really sure why 
+  strtokIndexer= strtok(NULL, ",");
   leftMotor = atoi(strtokIndexer);
 
   strtokIndexer= strtok(NULL, ",");
   rightMotor = atoi(strtokIndexer);
 
-  
-  //now that we have extracted the data from the Rpi as floats, we can use them to command actuators somewhere else in the code
-  
+  // Debug output to verify parsing
+  Serial.print("PARSED: state=");
+  Serial.print(currentState);
+  Serial.print(" leftMotor=");
+  Serial.print(leftMotor);
+  Serial.print(" rightMotor=");
+  Serial.println(rightMotor);
 }
 
 //==========================================
@@ -218,17 +181,14 @@ void state1Spin() {
     // Read sensors
     float frontDist = readUltrasonic(TRIG_FRONT, ECHO_FRONT);
     float leftDist = readUltrasonic(TRIG_LEFT, ECHO_LEFT);
-    float rightDist = readUltrasonic(TRIG_RIGHT, ECHO_RIGHT);
-    
-    // Send data to Python: SPIN,angle,frontDist,leftDist,rightDist
+
+    // Send data to Python: SPIN,angle,frontDist,leftDist
     Serial.print("SPIN,");
     Serial.print(spinAngle);
     Serial.print(',');
     Serial.print(frontDist);
     Serial.print(',');
-    Serial.print(leftDist);
-    Serial.print(',');
-    Serial.println(rightDist);
+    Serial.println(leftDist);
     
   } else {
     // Spin complete
@@ -243,68 +203,30 @@ void state1Spin() {
 //==========================================
 
 void sendDataToRpi() {
-
-  // STATE 1: Initialization with US sensors - spin and let Python analyze
-  if (currentState == 1 && !state1Initialized) {
-    state1Spin();  // Just spin and send raw data
-  } 
-  // STATE 1: After initialization complete, send sensor values + position
-  else if (currentState == 1 && state1Initialized) {
-    float frontDist = readUltrasonic(TRIG_FRONT, ECHO_FRONT);
-    float leftDist  = readUltrasonic(TRIG_LEFT, ECHO_LEFT);
-    float rightDist = readUltrasonic(TRIG_RIGHT, ECHO_RIGHT);
-
-    Serial.print("STATE1,");
-    if (frontDist < 0) Serial.print("No Echo");
-    else Serial.print(frontDist);
-    Serial.print(',');
-
-    if (leftDist < 0) Serial.print("No Echo");
-    else Serial.print(leftDist);
-
-    Serial.print(',');
-    if (rightDist < 0) Serial.print("No Echo");
-    else Serial.print(rightDist);
-    
-    // Also send position data
-    Serial.print(',');
-    Serial.print(xPosition);
-    Serial.print(',');
-    Serial.print(yPosition);
-    Serial.print(',');
-    Serial.println(robotAngle);
-  }
-  // STATE 2: Line following to second cross
-  else if (currentState == 2) {
-    linePosition = qtr.readLineBlack(sensorValues);
-    
-    // Check for cross
-    if(sensorValues[7] > 750 && sensorValues[0] > 750) {
-      isCross = 1;
-    } else {
-      isCross = 0;
-    }
-    
-    Serial.print("STATE2,");
-    Serial.print(linePosition);
-    Serial.print(',');
-    Serial.print(isCross);
-    
-    // Also send position data
-    Serial.print(',');
-    Serial.print(xPosition);
-    Serial.print(',');
-    Serial.print(yPosition);
-    Serial.print(',');
-    Serial.println(robotAngle);
-  }
-  // STATE 3: IR sensors only (no line or US sensor reading)
-  else if (currentState == 3) {
-    // Only IR sensors are read on Rpi side, Arduino sends minimal data
-    Serial.println("3");
-  }
-
-  delay(250);
+  // Send raw encoder counts and US sensor readings
+  // Format: <encoder_left,encoder_right,front_US,left_US>
+  // Python handles all state management and calculations (angle, position, etc)
+  
+  // Read both encoder counts
+  int leftEncoderCount = encoderLeft.read();
+  int rightEncoderCount = encoderRight.read();
+  
+  // Read US sensors
+  float frontDist = readUltrasonic(TRIG_FRONT, ECHO_FRONT);
+  float leftDist = readUltrasonic(TRIG_LEFT, ECHO_LEFT);
+  
+  // Send data to Python
+  Serial.print('<');
+  Serial.print(leftEncoderCount);
+  Serial.print(',');
+  Serial.print(rightEncoderCount);
+  Serial.print(',');
+  Serial.print(frontDist);
+  Serial.print(',');
+  Serial.print(leftDist);
+  Serial.println('>');
+  
+  delay(50);  // ~20Hz update rate
   newData = false;
 
 }
@@ -312,8 +234,11 @@ void sendDataToRpi() {
 //=======================================
 
 void commandMotors(){
-  analogWrite(3, leftMotor);   // Left motor
-  analogWrite(2, rightMotor);  // Right motor
+  // Command motors using AStar32U4Motors library
+  // Range: -400 to 400
+  // M1 = right motor, M2 = left motor
+  m.setM1Speed(rightMotor);
+  m.setM2Speed(leftMotor);
 }
 
 
