@@ -1,8 +1,11 @@
 #include <Arduino.h>
 #include <AStar32U4Motors.h>
 #include <Encoder.h>
+#include <QTRSensors.h>
+#include <math.h>
 
 AStar32U4Motors m;
+QTRSensors qtr;
 
 // FRONT Sensor
 #define TRIG_FRONT 14
@@ -11,6 +14,11 @@ AStar32U4Motors m;
 // LEFT Sensor (not wired now, but we keep the defines)
 #define TRIG_LEFT 12
 #define ECHO_LEFT 1
+
+// Line sensor (QTR-8RC)
+const uint8_t LineSensorCount = 8;
+uint16_t lineSensorValues[LineSensorCount];
+uint16_t linePosition = 0;
 
 // Serial command parsing
 const byte numChars = 32;
@@ -25,8 +33,8 @@ const unsigned long TELEMETRY_INTERVAL_MS = 40; // ~25 Hz stream
 unsigned long lastTelemetryMillis = 0;
 float lastFrontDist = -1.0f;
 float lastLeftDist = -1.0f;
-int16_t linePosition = -1;
 bool actionActive = false;
+bool lineFollowActive = false;
 
 // Encoder + geometry (from lab template)
 const int encoderRightPinA = 15;
@@ -39,16 +47,20 @@ Encoder encoderLeft(encoderLeftPinA, encoderLeftPinB);
 const long encoderResolution = 1440;       // counts per rev
 const float wheelDiameterIn = 2.7559055f;  // inches
 const float wheelDiameterCm = wheelDiameterIn * 2.54f;
-const float trackWidthCm = 14.0f;          // measured center-to-center wheel spacing
+const float trackWidthCm = 14.0f;          // measured center-to-center wheel spacing (tune for turn accuracy)
 const float countsPerCm = encoderResolution / (PI * wheelDiameterCm);
+float turnGain = 0.92f;                    // scale commanded degrees (1.0 = no scale; <1 reduces turn)
 
 // Bias and default speeds (tunable via commands)
-float leftBias = 1.0f;
+float leftBias = 1.15f;
 float rightBias = 1.0f;
 int leftMaxCmd = 400;   // per-motor command caps (tune if one wheel is stronger)
 int rightMaxCmd = 400;
 int defaultDriveSpeed = 60;  // keep raw commands <= 60 for controlled motion
 int defaultTurnSpeed = 60;
+int lineBaseSpeed = 60;
+const int lineMinForward = 40;
+const float lineStopFrontCm = 56.0f; // stop line following when front US within this
 
 // Forward decls
 void recvWithStartEndMarkers();
@@ -62,6 +74,10 @@ void driveDistanceCm(float cm, int speed);
 void turnDegrees(float deg, int speed);
 int applyLeftBias(int cmd);
 int applyRightBias(int cmd);
+void initLineSensors();
+void lineFollowStep();
+void startLineFollow();
+void stopLineFollow();
 
 //=====================================================
 
@@ -77,6 +93,9 @@ void setup() {
 
     pinMode(TRIG_LEFT, OUTPUT);
     pinMode(ECHO_LEFT, INPUT);   // harmless if not wired
+
+    // Line sensor init and calibration
+    initLineSensors();
 
     Serial.println("<Arduino is ready>");
     delay(500);
@@ -107,8 +126,13 @@ void loop() {
       Serial.println(">");
       newData = false;
     }
-    // ===== CONTROL MOTORS =====
-    commandMotors();
+    // ===== LINE FOLLOWING =====
+    if (lineFollowActive) {
+      lineFollowStep();
+    } else {
+      // ===== CONTROL MOTORS =====
+      commandMotors();
+    }
 
     // ===== CONTINUOUS TELEMETRY STREAM =====
     if (now - lastTelemetryMillis >= TELEMETRY_INTERVAL_MS) {
@@ -134,9 +158,13 @@ float readUltrasonic(int trigPin, int echoPin) {
 //======================================================
 
 void updateLineSensors() {
-  // TODO: wire in your line sensor reading here.
-  // For now, leave as -1 to indicate unavailable.
-  linePosition = -1;
+  // Read sensors (emitters on during read), remove low noise
+  linePosition = qtr.readLineBlack(lineSensorValues, QTRReadMode::On);
+  for (int i = 0; i < LineSensorCount; i++) {
+    if (lineSensorValues[i] < 300) {
+      lineSensorValues[i] = 0;
+    }
+  }
 }
 
 //======================================================
@@ -154,6 +182,7 @@ void parseData(){
     leftMotor = constrain(applyLeftBias((int)parsedLeft), -400, 400);
     rightMotor = constrain(applyRightBias((int)parsedRight), -400, 400);
     actionActive = false;
+    lineFollowActive = false;
     Serial.print("[CMD] Manual L=");
     Serial.print(leftMotor);
     Serial.print(" R=");
@@ -198,10 +227,24 @@ void parseData(){
       spd = constrain(spd, 0, 60);
       turnDegrees(deg, spd);
     }
+  } else if (tok[0] == 'G') { // turn gain: G,gain (scale degrees)
+    char *gTok = strtok(NULL, ",");
+    if (gTok) {
+      turnGain = atof(gTok);
+      if (turnGain < 0.1f) turnGain = 0.1f;
+      if (turnGain > 2.0f) turnGain = 2.0f;
+      Serial.print("[CMD] Turn gain set to ");
+      Serial.println(turnGain, 3);
+    }
+  } else if (tok[0] == 'L') { // start line follow
+    startLineFollow();
+  } else if (tok[0] == 'X') { // stop line follow
+    stopLineFollow();
   } else if (tok[0] == 'H') { // halt
     leftMotor = 0;
     rightMotor = 0;
     actionActive = false;
+    lineFollowActive = false;
     Serial.println("[CMD] Halt");
   }
 }
@@ -223,7 +266,7 @@ void sendDataToRpi() {
   Serial.print(",");
   Serial.print(linePosition);
   Serial.print(",");
-  Serial.print(actionActive ? 1 : 0);
+  Serial.print((actionActive || lineFollowActive) ? 1 : 0);
   Serial.println(">");
 }
 
@@ -276,6 +319,101 @@ void resetEncoders() {
   encoderRight.write(0);
 }
 
+//=========================================================
+// ================== LINE FOLLOWING (from line_following_new_PID_CP) =========
+
+// PID parameters
+float Kp = 2.0f;
+float Ki = 1.0f;
+float Kd = 1.0f;
+const float integralMin = -5000.0f;
+const float integralMax = 5000.0f;
+float ItermAccum = 0.0f;
+float prevError = 0.0f;
+const float PID_dt = 0.05f; // 50 ms
+unsigned long lastPidMs = 0;
+
+void initLineSensors() {
+  // Line sensor pins and emitter (QTR-8RC)
+  qtr.setTypeRC();
+  qtr.setSensorPins((const uint8_t[]){7, 18, 23, 20, 21, 22, 8, 6}, LineSensorCount);
+  qtr.setEmitterPin(4);
+
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
+  for (uint16_t i = 0; i < 400; i++) {
+    qtr.calibrate();
+  }
+  digitalWrite(LED_BUILTIN, LOW);
+}
+
+void startLineFollow() {
+  lineFollowActive = true;
+  actionActive = false;
+  ItermAccum = 0.0f;
+  prevError = 0.0f;
+  lastPidMs = millis();
+  Serial.println("[LINE] Start line follow");
+}
+
+void stopLineFollow() {
+  lineFollowActive = false;
+  m.setM1Speed(0);
+  m.setM2Speed(0);
+  Serial.println("[LINE] Stop line follow");
+}
+
+void lineFollowStep() {
+  unsigned long now = millis();
+  if (now - lastPidMs < 50) {
+    return;
+  }
+  lastPidMs = now;
+
+  updateLineSensors();
+  int error = 3500 - (int)linePosition; // target center of array (~3500)
+
+  // Proportional
+  float Pterm = Kp * (float)error;
+  // Integral with windup guard
+  ItermAccum += ((float)error) * PID_dt;
+  if (ItermAccum > integralMax) ItermAccum = integralMax;
+  if (ItermAccum < integralMin) ItermAccum = integralMin;
+  float Iterm = Ki * ItermAccum;
+  // Derivative
+  float Dterm = Kd * (((float)error - prevError) / PID_dt);
+  prevError = (float)error;
+
+  float output = Pterm + Iterm + Dterm;
+  const float deadband = 5.0f;
+  if (fabs(output) < deadband) output = 0.0f;
+
+  float maxCorrection = (float)lineBaseSpeed - (float)lineMinForward;
+  if (maxCorrection < 0.0f) maxCorrection = 0.0f;
+  if (output > maxCorrection) output = maxCorrection;
+  if (output < -maxCorrection) output = -maxCorrection;
+
+  float desiredLeftF = (float)lineBaseSpeed - output;
+  float desiredRightF = (float)lineBaseSpeed + output;
+  desiredLeftF = constrain(desiredLeftF, (float)lineMinForward, 255.0f);
+  desiredRightF = constrain(desiredRightF, (float)lineMinForward, 255.0f);
+
+  int lCmd = applyLeftBias((int)desiredLeftF);
+  int rCmd = applyRightBias((int)desiredRightF);
+
+  m.setM1Speed(rCmd); // M1 = right
+  m.setM2Speed(lCmd); // M2 = left
+
+  // Stop condition: front US within threshold
+  float front = readUltrasonic(TRIG_FRONT, ECHO_FRONT);
+  if (front > 0 && front <= lineStopFrontCm) {
+    stopLineFollow();
+    Serial.print("[LINE] Front distance hit ");
+    Serial.print(front, 2);
+    Serial.println(" cm -> stopping line follow.");
+  }
+}
+
 // Blocking drive for distance (cm). Positive = forward, negative = backward.
 void driveDistanceCm(float cm, int speed) {
   speed = constrain(speed, -400, 400);
@@ -307,7 +445,7 @@ void turnDegrees(float deg, int speed) {
   resetEncoders();
   actionActive = true;
 
-  float arcCm = (trackWidthCm * PI) * (abs(deg) / 360.0f);
+  float arcCm = (trackWidthCm * PI) * (abs(deg) * turnGain / 360.0f);
   long targetCounts = (long)(arcCm * countsPerCm);
   int dir = (deg >= 0) ? 1 : -1; // left positive
 
