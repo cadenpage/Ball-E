@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import serial
 import time
+import math
 
 
 def send_packet(ser, packet, char_delay=0.0001):
@@ -48,20 +49,28 @@ VERBOSE = False             # Set True for extra logs
 TELEMETRY_TIMEOUT = 1.0     # seconds to wait for a telemetry line
 
 # Init sequence parameters (time-based, since no IMU/encoders)
-SPIN_SPEED = 45             # Motor speed for spins
-SCAN_DURATION = 4.0         # seconds to scan for closest wall
-MIN_HIT_TOL = 3.0           # cm tolerance around best distance
-SEEK_TIMEOUT = 5.0          # seconds while re-seeking the closest wall
+SPIN_SPEED = 45             # Motor speed for initial scan
+SEEK_SPIN_SPEED = 45        # Motor speed when re-seeking closest wall (slower to avoid overshoot)
+SCAN_DURATION = 8.0         # seconds to scan for closest wall (spin longer to sample more)
+MIN_HIT_TOL = 2.0           # cm tolerance around best distance
+SEEK_TIMEOUT = 10.0         # seconds while re-seeking the closest wall
+NEAR_HITS_REQUIRED = 8      # consecutive samples within tolerance to count as facing wall
+SETTLE_DELAY = 0.8          # seconds to pause after stopping a spin
 TURN_90_S = 0.9             # seconds for ~90° turn (tune)
-TURN_SPEED = 100            # motor speed for timed turns
-DRIVE_SPEED = 120           # forward speed toward centerline
+TURN_SPEED = 60            # motor speed for timed turns
+DRIVE_SPEED = 60           # forward speed toward centerline
 HALF_DISTANCE = 81.0        # target centerline distance (cm)
 DIST_TOL = 5.0              # tolerance (cm)
 DRIVE_TIMEOUT = 8.0         # cap straight drive time (s)
+CENTER_NUDGE_CM = 5.0       # drive this many cm past nominal half-distance before stopping
+
+# Post-init behavior
+USE_LINE_FOLLOW = True      # True => use line following, False => drive straight to 56 cm
+STOP_FRONT_CM = 56.0        # stop distance if driving straight
 
 # Motor bias (tuned near comp day)
-LEFT_BIAS = 1.0
-RIGHT_BIAS = 1.5
+LEFT_BIAS = 1.12
+RIGHT_BIAS = 1.0
 ####################################################################
 
 
@@ -113,6 +122,19 @@ def read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT):
     return last
 
 
+def wait_until_idle(ser, timeout=5.0):
+    """Wait until telemetry reports busy=0 (action complete)."""
+    deadline = time.time() + timeout
+    last = None
+    while time.time() < deadline:
+        tele = read_latest_telemetry(ser, timeout=0.2)
+        if tele:
+            last = tele
+            if tele.get('busy', 0) == 0:
+                return tele
+    return last
+
+
 # Begin main logic
 
 
@@ -141,6 +163,21 @@ def cmd_turn_deg(deg, speed):
 
 def cmd_max_caps(left_max, right_max):
     send_packet(ser, f"<M,{int(left_max)},{int(right_max)}>")
+
+def cmd_line_follow_start():
+    send_packet(ser, "<L>")
+
+
+def cmd_line_follow_stop():
+    send_packet(ser, "<X>")
+
+
+def cmd_drive_to_front(stop_cm, speed):
+    send_packet(ser, f"<F,{stop_cm:.1f},{speed}>")
+
+
+def cmd_invert_line(flag):
+    send_packet(ser, f"<I,{int(flag)}>")
 
 
 print("Ball-E Control System Ready")
@@ -184,6 +221,7 @@ try:
             if f > 0 and f < best_front:
                 best_front = f
     cmd_speed(0, 0)
+    time.sleep(SETTLE_DELAY)
     if best_front == float('inf'):
         print("No front sensor data during scan; aborting.")
         raise SystemExit(1)
@@ -191,30 +229,38 @@ try:
 
     # Phase 2: spin again until near that minimum
     print("[PHASE] Seek closest wall again")
-    cmd_speed(-SPIN_SPEED, SPIN_SPEED)
+    cmd_speed(-SEEK_SPIN_SPEED, SEEK_SPIN_SPEED)
     near_hits = 0
     seek_start = time.time()
-    while time.time() - seek_start < SEEK_TIMEOUT and near_hits < 3:
+    last_good_f = float('inf')
+    while time.time() - seek_start < SEEK_TIMEOUT and near_hits < NEAR_HITS_REQUIRED:
         tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
         if not tele:
             continue
-        f = tele.get('front', float('inf'))
-        if f > 0 and f <= (best_front + MIN_HIT_TOL):
+        f = tele.get('front', float('nan'))
+        if not math.isfinite(f) or f <= 0:
+            continue  # ignore invalid readings
+        last_good_f = f
+        if f <= (best_front + MIN_HIT_TOL):
             near_hits += 1
         else:
             near_hits = 0
     cmd_speed(0, 0)
-    print(f"[PHASE] Facing closest wall (front={f if 'f' in locals() else float('nan'):.2f} cm)")
+    time.sleep(SETTLE_DELAY)
+    print(f"[PHASE] Facing closest wall (front={last_good_f:.2f} cm, hits={near_hits}/{NEAR_HITS_REQUIRED})")
 
     # Phase 3: classify side using left sensor (looking at right wall now)
     tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
     left_read = tele.get('left', float('nan')) if tele else float('nan')
     print(f"[PHASE] Left sensor now sees right wall: {left_read:.2f} cm")
     position = "center"
-    if left_read > (HALF_DISTANCE + DIST_TOL):
-        position = "left"
-    elif left_read < (HALF_DISTANCE - DIST_TOL):
-        position = "right"
+    if math.isfinite(left_read):
+        if left_read > (HALF_DISTANCE + DIST_TOL):
+            position = "left"
+        elif left_read < (HALF_DISTANCE - DIST_TOL):
+            position = "right"
+    else:
+        position = "unknown"  # no valid side reading; default to driving
     print(f"[PHASE] Classified position: {position.upper()}")
 
     # Phase 4: turn toward the center (left if on left side, right if on right)
@@ -227,7 +273,8 @@ try:
         turn_dir = -1 if position == "left" else 1
 
     print(f"[PHASE] Turning { 'left' if turn_dir==-1 else 'right' } 90°")
-    timed_drive(turn_dir * TURN_SPEED, -turn_dir * TURN_SPEED, TURN_90_S)
+    cmd_turn_deg(90 * turn_dir, TURN_SPEED)
+    wait_until_idle(ser, timeout=6.0)
 
     # Phase 5: drive toward centerline if not skipping
     if not skip_drive:
@@ -235,22 +282,42 @@ try:
         drive_start = time.time()
         cmd_speed(DRIVE_SPEED, DRIVE_SPEED)
         last_front = float('inf')
+        target_center = max(0.0, HALF_DISTANCE - CENTER_NUDGE_CM)
         while time.time() - drive_start < DRIVE_TIMEOUT:
             tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
             if not tele:
                 continue
             last_front = tele.get('front', float('inf'))
-            print(f"[DRIVE] front={last_front:.2f} cm (target {HALF_DISTANCE:.2f}±{DIST_TOL:.2f})")
-            if last_front <= (HALF_DISTANCE + DIST_TOL):
+            print(f"[DRIVE] front={last_front:.2f} cm (target {target_center:.2f}±{DIST_TOL:.2f})")
+            if last_front <= (target_center + DIST_TOL):
                 break
         cmd_speed(0, 0)
         print(f"[PHASE] Centerline approach complete, front={last_front:.2f} cm")
 
     # Phase 6: turn again to face away from back wall
     print(f"[PHASE] Turning { 'left' if turn_dir==-1 else 'right' } 90° to face away")
-    timed_drive(turn_dir * TURN_SPEED, -turn_dir * TURN_SPEED, TURN_90_S)
+    cmd_turn_deg(90 * turn_dir, TURN_SPEED)
+    wait_until_idle(ser, timeout=6.0)
 
-    print("\nInitialization sequence complete. Ready for next steps.")
+    if USE_LINE_FOLLOW:
+        print("\nInitialization complete. Starting line follow to goal...")
+        cmd_line_follow_start()
+    else:
+        print("\nInitialization complete. Driving straight to stop distance...")
+        cmd_drive_to_front(STOP_FRONT_CM, DRIVE_SPEED)
+
+    # Keep the script alive to monitor until the robot reports idle
+    print("[MONITOR] Watching telemetry... (Ctrl+C to stop)")
+    while True:
+        tele = read_latest_telemetry(ser, timeout=0.5)
+        if tele:
+            front = tele.get('front', float('nan'))
+            busy = tele.get('busy', 0)
+            print(f"[TEL] front={front:.2f} cm | busy={busy}")
+            if busy == 0:
+                print("[MONITOR] Robot reported idle; stopping monitor.")
+                break
+        time.sleep(0.1)
 
 except KeyboardInterrupt:
     print("\nAborted by user.")

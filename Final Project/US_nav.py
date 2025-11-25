@@ -143,6 +143,10 @@ def cmd_max_caps(left_max, right_max):
     send_packet(ser, f"<M,{int(left_max)},{int(right_max)}>")
 
 
+def cmd_turn_gain(gain):
+    send_packet(ser, f"<G,{gain:.3f}>")
+
+
 print("Ball-E Control System Ready")
 
 # Open serial port with modest timeouts and a write timeout

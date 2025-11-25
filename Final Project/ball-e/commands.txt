@@ -1,0 +1,22 @@
+<T,90,60>
+<G,0.95>
+<D,15,60>
+<S,50,50>
+<B,1.18,1.0>
+<L>
+<X>
+<H>
+<I,0>
+<I,1>
+
+
+servo
+<V,us>
+<V,2000>
+<P,2>
+
+
+
+
+
+WORKING INITIALIZATION + LINEFOLLOWING TO ANCHOR

@@ -2,6 +2,7 @@
 #include <AStar32U4Motors.h>
 #include <Encoder.h>
 #include <QTRSensors.h>
+#include <Servo.h>
 #include <math.h>
 
 AStar32U4Motors m;
@@ -52,15 +53,25 @@ const float countsPerCm = encoderResolution / (PI * wheelDiameterCm);
 float turnGain = 0.92f;                    // scale commanded degrees (1.0 = no scale; <1 reduces turn)
 
 // Bias and default speeds (tunable via commands)
-float leftBias = 1.15f;
+float leftBias = 1.12f;
 float rightBias = 1.0f;
 int leftMaxCmd = 400;   // per-motor command caps (tune if one wheel is stronger)
 int rightMaxCmd = 400;
 int defaultDriveSpeed = 60;  // keep raw commands <= 60 for controlled motion
 int defaultTurnSpeed = 60;
-int lineBaseSpeed = 60;
-const int lineMinForward = 40;
+int lineBaseSpeed = 90;        // base forward speed for line follow (matches working sketch)
+const int lineMinForward = 60; // minimum forward that overcomes friction
 const float lineStopFrontCm = 56.0f; // stop line following when front US within this
+const int lineStopHitsRequired = 3;   // consecutive valid hits required to stop
+bool invertLine = false;   // set true if array is reversed (changes error sign)
+
+// Servo (feetech) control
+const uint8_t SERVO_PIN = 9;     // Servo signal pin (use the same style as working sweep sketch)
+Servo shooterServo;
+int servoLeftUs = 1000;          // adjust for your left target
+int servoMidUs = 1500;           // adjust for center
+int servoRightUs = 2000;         // adjust for right target
+unsigned long lastServoStepMs = 0;
 
 // Forward decls
 void recvWithStartEndMarkers();
@@ -72,12 +83,14 @@ void commandMotors();
 void resetEncoders();
 void driveDistanceCm(float cm, int speed);
 void turnDegrees(float deg, int speed);
+void driveUntilFront(float targetCm, int speed);
 int applyLeftBias(int cmd);
 int applyRightBias(int cmd);
 void initLineSensors();
 void lineFollowStep();
 void startLineFollow();
 void stopLineFollow();
+void setServoUs(int us);
 
 //=====================================================
 
@@ -96,6 +109,10 @@ void setup() {
 
     // Line sensor init and calibration
     initLineSensors();
+
+    // Servo init
+    shooterServo.attach(SERVO_PIN);
+    setServoUs(servoMidUs);
 
     Serial.println("<Arduino is ready>");
     delay(500);
@@ -126,13 +143,13 @@ void loop() {
       Serial.println(">");
       newData = false;
     }
-    // ===== LINE FOLLOWING =====
-    if (lineFollowActive) {
-      lineFollowStep();
-    } else {
-      // ===== CONTROL MOTORS =====
-      commandMotors();
-    }
+  // ===== LINE FOLLOWING =====
+  if (lineFollowActive) {
+    lineFollowStep();
+  } else {
+    // ===== CONTROL MOTORS =====
+    commandMotors();
+  }
 
     // ===== CONTINUOUS TELEMETRY STREAM =====
     if (now - lastTelemetryMillis >= TELEMETRY_INTERVAL_MS) {
@@ -240,6 +257,35 @@ void parseData(){
     startLineFollow();
   } else if (tok[0] == 'X') { // stop line follow
     stopLineFollow();
+  } else if (tok[0] == 'F') { // drive until front distance: F,targetCm,speed
+    char *tTok = strtok(NULL, ",");
+    char *sTok = strtok(NULL, ",");
+    if (tTok) {
+      float targetCm = atof(tTok);
+      int spd = sTok ? atoi(sTok) : defaultDriveSpeed;
+      spd = constrain(spd, 0, 60);
+      driveUntilFront(targetCm, spd);
+    }
+  } else if (tok[0] == 'I') { // invert line error: I,0/1
+    char *iTok = strtok(NULL, ",");
+    if (iTok) {
+      int flag = atoi(iTok);
+      invertLine = (flag != 0);
+    }
+  } else if (tok[0] == 'V') { // servo microseconds: V,us
+    char *uTok = strtok(NULL, ",");
+    if (uTok) {
+      int us = atoi(uTok);
+      setServoUs(us);
+    }
+  } else if (tok[0] == 'P') { // beacon aim preset: P,0/1/2 (left/mid/right)
+    char *bTok = strtok(NULL, ",");
+    if (bTok) {
+      int sel = atoi(bTok);
+      if (sel == 0) setServoUs(servoLeftUs);
+      else if (sel == 1) setServoUs(servoMidUs);
+      else if (sel == 2) setServoUs(servoRightUs);
+    }
   } else if (tok[0] == 'H') { // halt
     leftMotor = 0;
     rightMotor = 0;
@@ -319,10 +365,36 @@ void resetEncoders() {
   encoderRight.write(0);
 }
 
+// Blocking forward drive until front US <= targetCm or timeout
+void driveUntilFront(float targetCm, int speed) {
+  speed = constrain(speed, 0, 60);
+  actionActive = true;
+  lineFollowActive = false;
+
+  int lCmd = applyLeftBias(speed);
+  int rCmd = applyRightBias(speed);
+
+  m.setM1Speed(rCmd);
+  m.setM2Speed(lCmd);
+
+  unsigned long start = millis();
+  const unsigned long timeoutMs = 12000;
+  while (millis() - start < timeoutMs) {
+    float front = readUltrasonic(TRIG_FRONT, ECHO_FRONT);
+    if (front > 0 && front <= targetCm) {
+      break;
+    }
+  }
+
+  m.setM1Speed(0);
+  m.setM2Speed(0);
+  actionActive = false;
+}
+
 //=========================================================
 // ================== LINE FOLLOWING (from line_following_new_PID_CP) =========
 
-// PID parameters
+// PID parameters (match working line_following_new_PID_CP.ino)
 float Kp = 2.0f;
 float Ki = 1.0f;
 float Kd = 1.0f;
@@ -330,8 +402,8 @@ const float integralMin = -5000.0f;
 const float integralMax = 5000.0f;
 float ItermAccum = 0.0f;
 float prevError = 0.0f;
-const float PID_dt = 0.05f; // 50 ms
 unsigned long lastPidMs = 0;
+bool useSimpleLine = false; // use full PID like working sketch
 
 void initLineSensors() {
   // Line sensor pins and emitter (QTR-8RC)
@@ -353,39 +425,48 @@ void startLineFollow() {
   ItermAccum = 0.0f;
   prevError = 0.0f;
   lastPidMs = millis();
-  Serial.println("[LINE] Start line follow");
 }
 
 void stopLineFollow() {
   lineFollowActive = false;
   m.setM1Speed(0);
   m.setM2Speed(0);
-  Serial.println("[LINE] Stop line follow");
 }
 
 void lineFollowStep() {
   unsigned long now = millis();
-  if (now - lastPidMs < 50) {
+  const unsigned long minLoopMs = 50; // match working sketch PID interval
+  if (now - lastPidMs < minLoopMs) {
     return;
   }
   lastPidMs = now;
+  float dt = 0.05f; // fixed 50ms loop like working code
 
   updateLineSensors();
-  int error = 3500 - (int)linePosition; // target center of array (~3500)
+  static float filtError = 0.0f;
+  int rawErr = invertLine ? ((int)linePosition - 3500) : (3500 - (int)linePosition); // target center of array (~3500)
+  filtError = 0.7f * filtError + 0.3f * (float)rawErr; // simple low-pass
+  int error = (int)filtError;
 
   // Proportional
-  float Pterm = Kp * (float)error;
-  // Integral with windup guard
-  ItermAccum += ((float)error) * PID_dt;
-  if (ItermAccum > integralMax) ItermAccum = integralMax;
-  if (ItermAccum < integralMin) ItermAccum = integralMin;
-  float Iterm = Ki * ItermAccum;
-  // Derivative
-  float Dterm = Kd * (((float)error - prevError) / PID_dt);
-  prevError = (float)error;
+  float output;
+  if (useSimpleLine) {
+    // Simple proportional steering (close to original example behavior)
+    output = Kp * (float)error;
+  } else {
+    float Pterm = Kp * (float)error;
+    // Integral with windup guard
+    ItermAccum += ((float)error) * dt;
+    if (ItermAccum > integralMax) ItermAccum = integralMax;
+    if (ItermAccum < integralMin) ItermAccum = integralMin;
+    float Iterm = Ki * ItermAccum;
+    // Derivative
+    float Dterm = Kd * (((float)error - prevError) / dt);
+    prevError = (float)error;
+    output = Pterm + Iterm + Dterm;
+  }
 
-  float output = Pterm + Iterm + Dterm;
-  const float deadband = 5.0f;
+  const float deadband = 8.0f;
   if (fabs(output) < deadband) output = 0.0f;
 
   float maxCorrection = (float)lineBaseSpeed - (float)lineMinForward;
@@ -398,19 +479,24 @@ void lineFollowStep() {
   desiredLeftF = constrain(desiredLeftF, (float)lineMinForward, 255.0f);
   desiredRightF = constrain(desiredRightF, (float)lineMinForward, 255.0f);
 
-  int lCmd = applyLeftBias((int)desiredLeftF);
-  int rCmd = applyRightBias((int)desiredRightF);
+  // Use raw motor commands to match working line-follow sketch (no bias)
+  int lCmd = (int)desiredLeftF;
+  int rCmd = (int)desiredRightF;
 
-  m.setM1Speed(rCmd); // M1 = right
-  m.setM2Speed(lCmd); // M2 = left
+  m.setM1Speed(lCmd); // match working sketch mapping (M1=left)
+  m.setM2Speed(rCmd); // M2=right
 
   // Stop condition: front US within threshold
   float front = readUltrasonic(TRIG_FRONT, ECHO_FRONT);
+  static int stopHits = 0;
   if (front > 0 && front <= lineStopFrontCm) {
+    stopHits++;
+  } else {
+    stopHits = 0;
+  }
+  if (stopHits >= lineStopHitsRequired) {
     stopLineFollow();
-    Serial.print("[LINE] Front distance hit ");
-    Serial.print(front, 2);
-    Serial.println(" cm -> stopping line follow.");
+    stopHits = 0;
   }
 }
 
@@ -474,4 +560,11 @@ int applyLeftBias(int cmd) {
 int applyRightBias(int cmd) {
   float scaled = cmd * rightBias;
   return (int)constrain((int)scaled, -rightMaxCmd, rightMaxCmd);
+}
+
+// Servo helper
+void setServoUs(int us) {
+  // constrain to broad analog servo range; adjust if needed
+  us = constrain(us, 500, 2500);
+  shooterServo.writeMicroseconds(us);
 }
