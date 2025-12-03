@@ -3,8 +3,6 @@ import serial
 import time
 import math
 from gpiozero import AngularServo
-import asyncio
-import sys
 import RPi.GPIO as GPIO
 
 
@@ -54,8 +52,8 @@ VERBOSE = False             # Set True for extra logs
 TELEMETRY_TIMEOUT = 1.0     # seconds to wait for a telemetry line
 
 # Init sequence parameters (time-based, since no IMU/encoders)
-SPIN_SPEED = 60             # Motor speed for initial scan
-SEEK_SPIN_SPEED = 60        # Motor speed when re-seeking closest wall (slower to avoid overshoot)
+SPIN_SPEED = 45             # Motor speed for initial scan
+SEEK_SPIN_SPEED = 45        # Motor speed when re-seeking closest wall (slower to avoid overshoot)
 SCAN_DURATION = 8.0         # seconds to scan for closest wall (spin longer to sample more)
 MIN_HIT_TOL = 2.0           # cm tolerance around best distance
 SEEK_TIMEOUT = 10.0         # seconds while re-seeking the closest wall
@@ -64,7 +62,7 @@ SETTLE_DELAY = 0.8          # seconds to pause after stopping a spin
 TURN_90_S = 0.9             # seconds for ~90° turn (tune)
 TURN_SPEED = 60            # motor speed for timed turns
 DRIVE_SPEED = 60           # forward speed toward centerline
-HALF_DISTANCE = 81.0        # target centerline distance (cm)
+HALF_DISTANCE = 78.0        # target centerline distance (cm)
 DIST_TOL = 5.0              # tolerance (cm)
 DRIVE_TIMEOUT = 8.0         # cap straight drive time (s)
 CENTER_NUDGE_CM = 5.0       # drive this many cm past nominal half-distance before stopping
@@ -253,6 +251,8 @@ def cmd_invert_line(flag):
 
 
 print("Ball-E Control System Ready")
+setup_gpio()
+print("GPIO ready (BCM mode)")
 
 # Open serial port with modest timeouts and a write timeout
 ser = serial.Serial(portname, BAUD, timeout=0.5, write_timeout=3)
@@ -453,6 +453,7 @@ try:
 except KeyboardInterrupt:
     print("\nAborted by user.")
 finally:
+    GPIO.cleanup()
     cmd_speed(0, 0)
     ser.close()
     print("Serial closed.")
