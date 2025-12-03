@@ -2,6 +2,8 @@
 import serial
 import time
 import math
+from gpiozero import AngularServo
+
 
 
 def send_packet(ser, packet, char_delay=0.0001):
