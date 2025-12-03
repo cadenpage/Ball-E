@@ -7,8 +7,8 @@ motor_channel = (13,16,19,20)
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(motor_channel,GPIO.OUT)
 
-async def cFeedIndex():
-	print('clockwise full 40deg turn\n') 
+async def FeederIndex():
+	print('clockwise full 40deg turn\n')
 	steps=2048/9/2/2
 	for _ in range(int(steps)): #steps for 40 degree turn
 		GPIO.output(motor_channel, (GPIO.HIGH,GPIO.LOW,GPIO.LOW,GPIO.LOW))
@@ -21,8 +21,8 @@ async def cFeedIndex():
 		await asyncio.sleep(.002)
 
 async def main():
-    await cFeedIndex()
+    await FeederIndex()
     print('Done')
     GPIO.cleanup()
-	
+
 asyncio.run(main())

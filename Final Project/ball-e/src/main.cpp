@@ -2,7 +2,7 @@
 #include <AStar32U4Motors.h>
 #include <Encoder.h>
 #include <QTRSensors.h>
-#include <Servo.h>
+// #include <Servo.h> not needed yay!!! i went ahead and commented servo shit off cuz im afraid to delete :)
 #include <math.h>
 
 AStar32U4Motors m;
@@ -66,12 +66,12 @@ const int lineStopHitsRequired = 3;   // consecutive valid hits required to stop
 bool invertLine = false;   // set true if array is reversed (changes error sign)
 
 // Servo (feetech) control
-const uint8_t SERVO_PIN = 9;     // Servo signal pin (use the same style as working sweep sketch)
-Servo shooterServo;
-int servoLeftUs = 1000;          // adjust for your left target
-int servoMidUs = 1500;           // adjust for center
-int servoRightUs = 2000;         // adjust for right target
-unsigned long lastServoStepMs = 0;
+//const uint8_t SERVO_PIN = 9;     // Servo signal pin (use the same style as working sweep sketch)
+//Servo shooterServo;
+//int servoLeftUs = 1000;          // adjust for your left target
+//int servoMidUs = 1500;           // adjust for center
+//int servoRightUs = 2000;         // adjust for right target
+///unsigned long lastServoStepMs = 0;
 
 // Forward decls
 void recvWithStartEndMarkers();
@@ -90,7 +90,7 @@ void initLineSensors();
 void lineFollowStep();
 void startLineFollow();
 void stopLineFollow();
-void setServoUs(int us);
+//void setServoUs(int us);
 
 //=====================================================
 
@@ -110,9 +110,9 @@ void setup() {
     // Line sensor init and calibration
     initLineSensors();
 
-    // Servo init
-    shooterServo.attach(SERVO_PIN);
-    setServoUs(servoMidUs);
+    // Servo init - no longer needed i think
+    //shooterServo.attach(SERVO_PIN);
+    //setServoUs(servoMidUs);
 
     Serial.println("<Arduino is ready>");
     delay(500);
@@ -272,21 +272,22 @@ void parseData(){
       int flag = atoi(iTok);
       invertLine = (flag != 0);
     }
-  } else if (tok[0] == 'V') { // servo microseconds: V,us
-    char *uTok = strtok(NULL, ",");
-    if (uTok) {
-      int us = atoi(uTok);
-      setServoUs(us);
-    }
-  } else if (tok[0] == 'P') { // beacon aim preset: P,0/1/2 (left/mid/right)
-    char *bTok = strtok(NULL, ",");
-    if (bTok) {
-      int sel = atoi(bTok);
-      if (sel == 0) setServoUs(servoLeftUs);
-      else if (sel == 1) setServoUs(servoMidUs);
-      else if (sel == 2) setServoUs(servoRightUs);
-    }
-  } else if (tok[0] == 'H') { // halt
+  } //else if (tok[0] == 'V') { // servo microseconds: V,us
+  //   char *uTok = strtok(NULL, ",");
+  //   if (uTok) {
+  //     int us = atoi(uTok);
+  //     setServoUs(us);
+  //   }
+  // }// else if (tok[0] == 'P') { // beacon aim preset: P,0/1/2 (left/mid/right)
+  //   char *bTok = strtok(NULL, ",");
+  //   if (bTok) {
+  //     int sel = atoi(bTok);
+  //     if (sel == 0) setServoUs(servoLeftUs);
+  //     else if (sel == 1) setServoUs(servoMidUs);
+  //     else if (sel == 2) setServoUs(servoRightUs);
+  //   }
+  // }
+    else if (tok[0] == 'H') { // halt
     leftMotor = 0;
     rightMotor = 0;
     actionActive = false;
@@ -561,10 +562,10 @@ int applyRightBias(int cmd) {
   float scaled = cmd * rightBias;
   return (int)constrain((int)scaled, -rightMaxCmd, rightMaxCmd);
 }
-
-// Servo helper
-void setServoUs(int us) {
-  // constrain to broad analog servo range; adjust if needed
-  us = constrain(us, 500, 2500);
-  shooterServo.writeMicroseconds(us);
-}
+//========================================================= Commenting out all the stuff i think i was able to remove
+// // Servo helper
+// void setServoUs(int us) {
+//   // constrain to broad analog servo range; adjust if needed
+//   us = constrain(us, 500, 2500);
+//   shooterServo.writeMicroseconds(us);
+// }

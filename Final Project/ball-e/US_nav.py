@@ -3,6 +3,9 @@ import serial
 import time
 import math
 from gpiozero import AngularServo
+import asyncio
+import sys
+import RPi.GPIO as GPIO
 
 
 
@@ -65,6 +68,32 @@ HALF_DISTANCE = 81.0        # target centerline distance (cm)
 DIST_TOL = 5.0              # tolerance (cm)
 DRIVE_TIMEOUT = 8.0         # cap straight drive time (s)
 CENTER_NUDGE_CM = 5.0       # drive this many cm past nominal half-distance before stopping
+
+# IR Sensor & Servos
+POLL_HZ = 10.0  # how often to poll beacons
+BAUD = 115200
+
+SERVO_LEFT = 1000
+SERVO_MID = 1500
+SERVO_RIGHT = 2000
+
+ANGLE_LEFT = 60
+ANGLE_MID = 0
+ANGLE_RIGHT = -60
+
+REST_ANGLE = 90 #might be negative
+FIRE_ANGLE = 0 #Should deflect ruler and let go
+
+SHOT_COUNT = 0 #initiating count for shots taken just like me fr
+
+aim_servo = AngularServo(12, min_pulse_width=0.0005, max_pulse_width=0.0025) # Define the actual servo w/ PWM values from spec sheet
+#Pin 12 will be used for aiming servo
+shoot_servo = AngularServo(13, min_pulse_width=0.0005, max_pulse_width=0.0025) #"       "
+#Pin 13 will be used for shooting servo
+
+# Actuator RPI GPIO Pins
+IR_PINS = [14, 15, 18] #[PIN_LEFT, PIN_MID, PIN_RIGHT]
+STEPPER_PINS = (13, 16, 19, 20) # [STEPPER1, STEPPER2, STEPPER3, STEPPER4]
 
 # Post-init behavior
 USE_LINE_FOLLOW = True      # True => use line following, False => drive straight to 56 cm
@@ -138,7 +167,52 @@ def wait_until_idle(ser, timeout=5.0):
 
 
 # Begin main logic
+#Setup GPIO pins
+def setup_gpio():
+    GPIO.setmode(GPIO.BCM)
+    for pin in IR_PINS:
+        GPIO.setup(pin, GPIO.IN)
+    for pin in STEPPER_PINS:
+        GPIO.setup(pin, GPIO.OUT)
 
+#IR Commands
+
+def read_beacons():
+    """Return states for L/M/R where True means beacon detected."""
+    return {
+        "left": GPIO.input(IR_PINS[0]) == GPIO.LOW, # BCM pin for left beacon input
+        "mid":  GPIO.input(IR_PINS[1])  == GPIO.LOW, # BCM pin for middle beacon input
+        "right": GPIO.input(IR_PINS[2]) == GPIO.LOW # BCM pin for right beacon input
+    }
+
+def choose_servo_angle(states):
+    """Priority L > M > R."""
+    if states["left"]:
+        return ANGLE_LEFT
+    if states["mid"]:
+        return ANGLE_MID
+    if states["right"]:
+        return ANGLE_RIGHT
+    return None
+
+def FeederIndex():
+    print('clockwise feed turn\n')
+
+    steps = 2048 / 9 / 2 / 2   # your original math
+    delay = 0.002              # 2 ms per step
+
+    for _ in range(int(steps)):  # steps for 40 degree turn
+        GPIO.output(STEPPER_PINS, (GPIO.HIGH, GPIO.LOW,  GPIO.LOW,  GPIO.LOW))
+        time.sleep(delay)
+
+        GPIO.output(STEPPER_PINS, (GPIO.LOW,  GPIO.HIGH, GPIO.LOW,  GPIO.LOW))
+        time.sleep(delay)
+
+        GPIO.output(STEPPER_PINS, (GPIO.LOW,  GPIO.LOW,  GPIO.HIGH, GPIO.LOW))
+        time.sleep(delay)
+
+        GPIO.output(STEPPER_PINS, (GPIO.LOW,  GPIO.LOW,  GPIO.LOW,  GPIO.HIGH))
+        time.sleep(delay)
 
 # Setup Serial
 def timed_drive(left, right, duration):
@@ -182,10 +256,11 @@ def cmd_invert_line(flag):
     send_packet(ser, f"<I,{int(flag)}>")
 
 
+
 print("Ball-E Control System Ready")
 
 # Open serial port with modest timeouts and a write timeout
-ser = serial.Serial(portname, 115200, timeout=0.5, write_timeout=3)
+ser = serial.Serial(portname, BAUD, timeout=0.5, write_timeout=3)
 
 # Toggle DTR/RTS to hard-reset the Arduino (no unplug needed)
 ser.setDTR(False)
@@ -296,7 +371,7 @@ try:
         cmd_speed(0, 0)
         print(f"[PHASE] Centerline approach complete, front={last_front:.2f} cm")
 
-    # Phase 6: turn again to face away from back wall
+    # Phase 6: turn again to face away from back wall & Follow Line
     print(f"[PHASE] Turning { 'left' if turn_dir==-1 else 'right' } 90° to face away")
     cmd_turn_deg(90 * turn_dir, TURN_SPEED)
     wait_until_idle(ser, timeout=6.0)
@@ -307,6 +382,62 @@ try:
     else:
         print("\nInitialization complete. Driving straight to stop distance...")
         cmd_drive_to_front(STOP_FRONT_CM, DRIVE_SPEED)
+
+    #Phase 7: Robot is stopped, we begin to read beacons, aim, and shoot
+    print(f"[PHASE] Monitoring IR Beacon Telemetry & shooting system")
+
+    prev_detected = False  # Remember if beacon was detected last loop
+
+    while SHOT_COUNT < 10:
+        states = read_beacons()
+        detected = any(states.values())  # Any IR beacon active?
+
+        # -------- SHOOT ONLY ON THE RISING EDGE --------
+        if detected and not prev_detected:
+            # New detection → fire once
+            target_angle = choose_servo_angle(states)
+            if target_angle is not None:
+                aim_servo.angle = target_angle
+                time.sleep(2.0)
+
+                # FIRE
+                shoot_servo.angle = FIRE_ANGLE
+                time.sleep(1.0)
+                shoot_servo.angle = REST_ANGLE
+                time.sleep(2.0)
+
+                SHOT_COUNT += 1
+                time.sleep(2.0) # pause and load ball
+                FeederIndex()   # Advance feeder
+                time.sleep(1.0) # pause after feeding
+
+                print(f"[SHOOT] Fired shot #{SHOT_COUNT}")
+
+        # update memory
+        prev_detected = detected
+
+        time.sleep(0.5)
+
+    # =================THIS IS WHAT I WROTE but im worried itll overcount shots so i added a debouncing version above^^ =====
+    # while (SHOT_COUNT < 10): #10 total shots before being drunk
+    #     states = read_beacons()
+    #     target_angle = choose_servo_angle(states)
+    #     if target_angle is not None:
+    #         aim_servo.angle = target_angle
+    #         # print(f"[BEACON] Detected states L/M/R = {states}, aiming servo to {target_angle}°")
+    #         time.sleep(2.0)  # Pause to allow servo to reach position
+    #         # ===== Activate shooting servo ==========
+    #         # print("[SHOOT] Activating shooting servo")
+    #         shoot_servo.angle = FIRE_ANGLE  # Move to shoot position
+    #         time.sleep(1.0)         # Hold position briefly
+    #         shoot_servo.angle = REST_ANGLE    # Return to rest position
+    #         time.sleep(3.0)         # Allow time to return
+    #         SHOT_COUNT += 1
+    #     else:
+    #         print(f"[BEACON] No beacon detected; returning to home")
+
+    #     time.sleep(0.5)  # Polling interval
+
 
     # Keep the script alive to monitor until the robot reports idle
     print("[MONITOR] Watching telemetry... (Ctrl+C to stop)")
