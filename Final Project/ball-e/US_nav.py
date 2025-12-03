@@ -54,8 +54,8 @@ VERBOSE = False             # Set True for extra logs
 TELEMETRY_TIMEOUT = 1.0     # seconds to wait for a telemetry line
 
 # Init sequence parameters (time-based, since no IMU/encoders)
-SPIN_SPEED = 45             # Motor speed for initial scan
-SEEK_SPIN_SPEED = 45        # Motor speed when re-seeking closest wall (slower to avoid overshoot)
+SPIN_SPEED = 60             # Motor speed for initial scan
+SEEK_SPIN_SPEED = 60        # Motor speed when re-seeking closest wall (slower to avoid overshoot)
 SCAN_DURATION = 8.0         # seconds to scan for closest wall (spin longer to sample more)
 MIN_HIT_TOL = 2.0           # cm tolerance around best distance
 SEEK_TIMEOUT = 10.0         # seconds while re-seeking the closest wall
@@ -77,23 +77,18 @@ SERVO_LEFT = 1000
 SERVO_MID = 1500
 SERVO_RIGHT = 2000
 
-ANGLE_LEFT = 60
+ANGLE_LEFT = 30
 ANGLE_MID = 0
-ANGLE_RIGHT = -60
+ANGLE_RIGHT = -30
 
-REST_ANGLE = 90 #might be negative
-FIRE_ANGLE = 0 #Should deflect ruler and let go
+REST_ANGLE = -90 #might be negative
+FIRE_ANGLE = 90 #Should deflect ruler and let go
 
 SHOT_COUNT = 0 #initiating count for shots taken just like me fr
 
-aim_servo = AngularServo(12, min_pulse_width=0.0005, max_pulse_width=0.0025) # Define the actual servo w/ PWM values from spec sheet
-#Pin 12 will be used for aiming servo
-shoot_servo = AngularServo(13, min_pulse_width=0.0005, max_pulse_width=0.0025) #"       "
-#Pin 13 will be used for shooting servo
-
 # Actuator RPI GPIO Pins
 IR_PINS = [14, 15, 18] #[PIN_LEFT, PIN_MID, PIN_RIGHT]
-STEPPER_PINS = (13, 16, 19, 20) # [STEPPER1, STEPPER2, STEPPER3, STEPPER4]
+STEPPER_PINS = (22, 23, 24, 25) # [STEPPER1, STEPPER2, STEPPER3, STEPPER4]
 
 # Post-init behavior
 USE_LINE_FOLLOW = True      # True => use line following, False => drive straight to 56 cm
@@ -387,7 +382,10 @@ try:
     print(f"[PHASE] Monitoring IR Beacon Telemetry & shooting system")
 
     prev_detected = False  # Remember if beacon was detected last loop
-
+    aim_servo = AngularServo(12, min_pulse_width=0.0005, max_pulse_width=0.0025) # Define the actual servo w/ PWM values from spec sheet
+    #Pin 12 will be used for aiming servo
+    shoot_servo = AngularServo(13, min_pulse_width=0.0005, max_pulse_width=0.0025) #"       "
+    #Pin 13 will be used for shooting servo
     while SHOT_COUNT < 10:
         states = read_beacons()
         detected = any(states.values())  # Any IR beacon active?
