@@ -61,7 +61,7 @@ int defaultDriveSpeed = 60;  // keep raw commands <= 60 for controlled motion
 int defaultTurnSpeed = 60;
 int lineBaseSpeed = 90;        // base forward speed for line follow (matches working sketch)
 const int lineMinForward = 60; // minimum forward that overcomes friction
-const float lineStopFrontCm = 56.0f; // stop line following when front US within this
+const float lineStopFrontCm = 90.0f; // stop line following when front US within this
 const int lineStopHitsRequired = 3;   // consecutive valid hits required to stop
 bool invertLine = false;   // set true if array is reversed (changes error sign)
 
@@ -396,9 +396,9 @@ void driveUntilFront(float targetCm, int speed) {
 // ================== LINE FOLLOWING (from line_following_new_PID_CP) =========
 
 // PID parameters (match working line_following_new_PID_CP.ino)
-float Kp = 2.0f;
-float Ki = 1.0f;
-float Kd = 1.0f;
+float Kp = 1.0f;
+float Ki = 2.0f;
+float Kd = 0.5f;
 const float integralMin = -5000.0f;
 const float integralMax = 5000.0f;
 float ItermAccum = 0.0f;

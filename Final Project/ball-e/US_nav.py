@@ -5,6 +5,9 @@ import math
 from gpiozero import AngularServo
 import RPi.GPIO as GPIO
 
+from gpiozero.pins.pigpio import PiGPIOFactory
+factory = PiGPIOFactory()
+
 
 
 def send_packet(ser, packet, char_delay=0.0001):
@@ -90,7 +93,7 @@ STEPPER_PINS = (22, 23, 24, 25) # [STEPPER1, STEPPER2, STEPPER3, STEPPER4]
 
 # Post-init behavior
 USE_LINE_FOLLOW = True      # True => use line following, False => drive straight to 56 cm
-STOP_FRONT_CM = 56.0        # stop distance if driving straight
+STOP_FRONT_CM = 90        # stop distance if driving straight
 
 # Motor bias (tuned near comp day)
 LEFT_BIAS = 1.12
@@ -244,8 +247,8 @@ def cmd_line_follow_stop():
 def cmd_drive_to_front(stop_cm, speed):
     send_packet(ser, f"<F,{stop_cm:.1f},{speed}>")
 
-
-def cmd_invert_line(flag):
+#we can ignore this one
+def cmd_invert_line(flag): 
     send_packet(ser, f"<I,{int(flag)}>")
 
 
@@ -382,10 +385,11 @@ try:
     print(f"[PHASE] Monitoring IR Beacon Telemetry & shooting system")
 
     prev_detected = False  # Remember if beacon was detected last loop
-    aim_servo = AngularServo(12, min_pulse_width=0.0005, max_pulse_width=0.0025) # Define the actual servo w/ PWM values from spec sheet
+    aim_servo = AngularServo(12, min_pulse_width=0.0005, max_pulse_width=0.0025, pin_factory=factory) # Define the actual servo w/ PWM values from spec sheet
     #Pin 12 will be used for aiming servo
-    shoot_servo = AngularServo(13, min_pulse_width=0.0005, max_pulse_width=0.0025) #"       "
+    shoot_servo = AngularServo(13, min_pulse_width=0.0005, max_pulse_width=0.0025,pin_factory=factory) #"       "
     #Pin 13 will be used for shooting servo
+    aim_servo.angle = 60  # Initial rest position for sensing
     while SHOT_COUNT < 10:
         states = read_beacons()
         detected = any(states.values())  # Any IR beacon active?
@@ -408,6 +412,7 @@ try:
                 time.sleep(2.0) # pause and load ball
                 FeederIndex()   # Advance feeder
                 time.sleep(1.0) # pause after feeding
+                aim_servo.angle = 60  # Reset to rest position
 
                 print(f"[SHOOT] Fired shot #{SHOT_COUNT}")
 
