@@ -59,7 +59,7 @@ int defaultDriveSpeed = 60;  // keep raw commands <= 60 for controlled motion
 int defaultTurnSpeed = 60;
 int lineBaseSpeed = 50;        // base forward speed for line follow (matches working sketch)
 const int lineMinForward = 50; // minimum forward that overcomes friction
-const float lineStopFrontCm = 74.0f; // stop line following when front US within this
+const float lineStopFrontCm = 72.0f; // stop line following when front US within this
 const int lineStopHitsRequired = 3;   // consecutive valid hits required to stop
 bool invertLine = false;   // set true if array is reversed (changes error sign)
 
