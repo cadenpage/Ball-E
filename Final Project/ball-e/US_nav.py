@@ -396,46 +396,37 @@ try:
 
 ####################################################################
 
-    #Phase 7: Sweep to find closest wall to align facing goal
-    print(f"[PHASE] Sweeping with LEFT sensor to find goal alignment")
+    # Phase 7: spin scan to find min front distance
+    print("[PHASE] Spin scan for closest wall")
     best_front = float('inf')
     spin_start = time.time()
     cmd_speed(-SPIN_SPEED, SPIN_SPEED)  # spin left
-    while time.time() - spin_start < ALIGN_SCAN_DURATION:  # SWEEP LEFT
+    while time.time() - spin_start < SCAN_DURATION:
         tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
         if tele:
-            f = tele.get('left', float('inf'))
-            if f > 0 and f < best_front:
-                best_front = f
-    
-    cmd_speed(0, 0)
-    time.sleep(SETTLE_DELAY)
-    spin_start = time.time()
-    cmd_speed(SEEK_SPIN_SPEED, -SEEK_SPIN_SPEED)  # SWEEP RIGHT (symmetric)
-    while time.time() - spin_start < (2 * ALIGN_SCAN_DURATION):
-        tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
-        if tele:
-            f = tele.get('left', float('inf'))
+            f = tele.get('front', float('inf'))
             if f > 0 and f < best_front:
                 best_front = f
     cmd_speed(0, 0)
     time.sleep(SETTLE_DELAY)
     if best_front == float('inf'):
-        print("No LEFT sensor data during alignment sweep; aborting.")
+        print("No front sensor data during scan; aborting.")
         raise SystemExit(1)
-    print(f"[PHASE] Closest side-wall (LEFT sensor) measured at ~{best_front:.2f} cm")
+    print(f"[PHASE] Closest wall measured at ~{best_front:.2f} cm")
 
-    print("[PHASE] Seek closest side-wall again")
+####################################################################
+
+    # Phase 8: spin again until near that minimum
+    print("[PHASE] Seek closest wall again")
     cmd_speed(-SEEK_SPIN_SPEED, SEEK_SPIN_SPEED)
     near_hits = 0
     seek_start = time.time()
-
     last_good_f = float('inf')
-    while time.time() - seek_start < ALIGN_TIMEOUT and near_hits < NEAR_HITS_REQUIRED:
+    while time.time() - seek_start < SEEK_TIMEOUT and near_hits < NEAR_HITS_REQUIRED:
         tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
         if not tele:
             continue
-        f = tele.get('left', float('nan'))
+        f = tele.get('front', float('nan'))
         if not math.isfinite(f) or f <= 0:
             continue  # ignore invalid readings
         last_good_f = f
@@ -445,7 +436,57 @@ try:
             near_hits = 0
     cmd_speed(0, 0)
     time.sleep(SETTLE_DELAY)
-    print(f"[PHASE] Facing closest side-wall (LEFT={last_good_f:.2f} cm, hits={near_hits}/{NEAR_HITS_REQUIRED})")
+    print(f"[PHASE] Facing closest wall (front={last_good_f:.2f} cm, hits={near_hits}/{NEAR_HITS_REQUIRED})")
+    # #Phase 7: Sweep to find closest wall to align facing goal
+    # print(f"[PHASE] Sweeping with LEFT sensor to find goal alignment")
+    # best_front = float('inf')
+    # spin_start = time.time()
+    # cmd_speed(-SPIN_SPEED, SPIN_SPEED)  # spin left
+    # while time.time() - spin_start < ALIGN_SCAN_DURATION:  # SWEEP LEFT
+    #     tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
+    #     if tele:
+    #         f = tele.get('left', float('inf'))
+    #         if f > 0 and f < best_front:
+    #             best_front = f
+    
+    # cmd_speed(0, 0)
+    # time.sleep(SETTLE_DELAY)
+    # spin_start = time.time()
+    # cmd_speed(SEEK_SPIN_SPEED, -SEEK_SPIN_SPEED)  # SWEEP RIGHT (symmetric)
+    # while time.time() - spin_start < (2 * ALIGN_SCAN_DURATION):
+    #     tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
+    #     if tele:
+    #         f = tele.get('left', float('inf'))
+    #         if f > 0 and f < best_front:
+    #             best_front = f
+    # cmd_speed(0, 0)
+    # time.sleep(SETTLE_DELAY)
+    # if best_front == float('inf'):
+    #     print("No LEFT sensor data during alignment sweep; aborting.")
+    #     raise SystemExit(1)
+    # print(f"[PHASE] Closest side-wall (LEFT sensor) measured at ~{best_front:.2f} cm")
+
+    # print("[PHASE] Seek closest side-wall again")
+    # cmd_speed(-SEEK_SPIN_SPEED, SEEK_SPIN_SPEED)
+    # near_hits = 0
+    # seek_start = time.time()
+
+    # last_good_f = float('inf')
+    # while time.time() - seek_start < ALIGN_TIMEOUT and near_hits < NEAR_HITS_REQUIRED:
+    #     tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
+    #     if not tele:
+    #         continue
+    #     f = tele.get('left', float('nan'))
+    #     if not math.isfinite(f) or f <= 0:
+    #         continue  # ignore invalid readings
+    #     last_good_f = f
+    #     if f <= (best_front + MIN_HIT_TOL):
+    #         near_hits += 1
+    #     else:
+    #         near_hits = 0
+    # cmd_speed(0, 0)
+    # time.sleep(SETTLE_DELAY)
+    # print(f"[PHASE] Facing closest side-wall (LEFT={last_good_f:.2f} cm, hits={near_hits}/{NEAR_HITS_REQUIRED})")
 
 
 ####################################################################

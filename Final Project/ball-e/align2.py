@@ -16,7 +16,7 @@ BAUD = 115200
 VERBOSE = False
 TELEMETRY_TIMEOUT = 1.0
 
-SPIN_SPEED = 45
+SPIN_SPEED = 60
 SEEK_SPIN_SPEED = 40
 ALIGN_SCAN_DURATION = 1.5
 MIN_HIT_TOL = 2.0
@@ -122,48 +122,61 @@ def cmd_bias(left_bias: float, right_bias: float) -> None:
     send_packet(ser, f"<B,{left_bias:.3f},{right_bias:.3f}>")
 
 
-def align_phase_front(ser: serial.Serial) -> bool:
-    """Combine Phase 1 & 2: spin scan + re-seek using FRONT sensor.
+def align_to_goal(ser: serial.Serial) -> bool:
+    """Run just the phase-7 style alignment using LEFT sensor."""
+    print("[ALIGN] Sweeping with LEFT sensor to find goal alignment")
+    best_left = float('inf')
 
-    This is a direct copy of the main US_nav logic, but
-    packaged so you can test it independently.
-    """
-    # Phase 1: spin scan to find min front distance
-    print("[ALIGN] Spin scan for closest wall (front sensor)")
-    best_front = float("inf")
+    # Sweep left
+    print("[ALIGN] Sweeping left")
     spin_start = time.time()
-    cmd_speed(-SPIN_SPEED, SPIN_SPEED)  # spin (direction depends on wiring)
-    while time.time() - spin_start < SCAN_DURATION:
+    cmd_speed(-SPIN_SPEED, 0)
+    while time.time() - spin_start < ALIGN_SCAN_DURATION:
         tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
         if tele:
-            f = tele.get("front", float("inf"))
-            if f > 0 and f < best_front:
-                best_front = f
+            d = tele.get('left', float('inf'))
+            if d > 0 and d < best_left:
+                best_left = d
+
     cmd_speed(0, 0)
     time.sleep(SETTLE_DELAY)
 
-    if best_front == float("inf"):
-        print("[ALIGN] No front sensor data during scan; aborting.")
+    # Sweep right (symmetric duration)
+    print("[ALIGN] Sweeping right")
+    spin_start = time.time()
+    cmd_speed(SPIN_SPEED, 0)
+    while time.time() - spin_start < (2 * ALIGN_SCAN_DURATION):
+        tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
+        if tele:
+            d = tele.get('left', float('inf'))
+            if d > 0 and d < best_left:
+                best_left = d
+
+    cmd_speed(0, 0)
+    time.sleep(SETTLE_DELAY)
+
+    if best_left == float('inf'):
+        print("[ALIGN] No LEFT sensor data during alignment sweep; aborting.")
         return False
 
-    print(f"[ALIGN] Closest wall measured at ~{best_front:.2f} cm (front)")
+    print(f"[ALIGN] Closest side-wall (LEFT sensor) measured at ~{best_left:.2f} cm")
 
-    # Phase 2: spin again until near that minimum
-    print("[ALIGN] Seeking closest wall again (front sensor)")
+    # Re-seek the closest left distance
+    print("[ALIGN] Seeking closest side-wall again")
     cmd_speed(-SEEK_SPIN_SPEED, SEEK_SPIN_SPEED)
     near_hits = 0
     seek_start = time.time()
-    last_good_f = float("inf")
+    last_good = float('inf')
 
     while time.time() - seek_start < ALIGN_TIMEOUT and near_hits < NEAR_HITS_REQUIRED:
         tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
         if not tele:
             continue
-        f = tele.get("front", float("nan"))
-        if not math.isfinite(f) or f <= 0:
-            continue  # ignore invalid readings
-        last_good_f = f
-        if f <= (best_front + MIN_HIT_TOL):
+        d = tele.get('left', float('nan'))
+        if not math.isfinite(d) or d <= 0:
+            continue
+        last_good = d
+        if d <= (best_left + MIN_HIT_TOL):
             near_hits += 1
         else:
             near_hits = 0
@@ -171,9 +184,7 @@ def align_phase_front(ser: serial.Serial) -> bool:
     cmd_speed(0, 0)
     time.sleep(SETTLE_DELAY)
 
-    print(
-        f"[ALIGN] Facing closest wall (front={last_good_f:.2f} cm, hits={near_hits}/{NEAR_HITS_REQUIRED})"
-    )
+    print(f"[ALIGN] Facing closest side-wall (LEFT={last_good:.2f} cm, hits={near_hits}/{NEAR_HITS_REQUIRED})")
     return near_hits >= NEAR_HITS_REQUIRED
 
 
@@ -203,7 +214,7 @@ if __name__ == "__main__":
     cmd_bias(LEFT_BIAS, RIGHT_BIAS)
 
     try:
-        ok = align_phase_front(ser)
+        ok = align_to_goal(ser)
         if not ok:
             print("[ALIGN] Alignment did not complete cleanly.")
         else:

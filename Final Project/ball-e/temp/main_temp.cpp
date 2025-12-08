@@ -61,7 +61,7 @@ int defaultDriveSpeed = 60;  // keep raw commands <= 60 for controlled motion
 int defaultTurnSpeed = 60;
 int lineBaseSpeed = 90;        // base forward speed for line follow (matches working sketch)
 const int lineMinForward = 60; // minimum forward that overcomes friction
-const float lineStopFrontCm = 90.0f; // stop line following when front US within this
+const float lineStopFrontCm = 65.0f; // stop line following when front US within this
 const int lineStopHitsRequired = 3;   // consecutive valid hits required to stop
 bool invertLine = false;   // set true if array is reversed (changes error sign)
 
@@ -113,9 +113,12 @@ void setup() {
     // Servo init - no longer needed i think
     //shooterServo.attach(SERVO_PIN);
     //setServoUs(servoMidUs);
-
+    // m.flipM1(true);
+    //m.flipM2(true);
+    
     Serial.println("<Arduino is ready>");
     delay(500);
+
 }
 
 //====================================================
@@ -177,11 +180,11 @@ float readUltrasonic(int trigPin, int echoPin) {
 void updateLineSensors() {
   // Read sensors (emitters on during read), remove low noise
   linePosition = qtr.readLineBlack(lineSensorValues, QTRReadMode::On);
-  for (int i = 0; i < LineSensorCount; i++) {
-    if (lineSensorValues[i] < 300) {
-      lineSensorValues[i] = 0;
-    }
-  }
+  // for (int i = 0; i < LineSensorCount; i++) {
+  //   if (lineSensorValues[i] < 400) {
+  //     lineSensorValues[i] = 0;
+  //   }
+  // }
 }
 
 //======================================================
@@ -396,9 +399,9 @@ void driveUntilFront(float targetCm, int speed) {
 // ================== LINE FOLLOWING (from line_following_new_PID_CP) =========
 
 // PID parameters (match working line_following_new_PID_CP.ino)
-float Kp = 1.0f;
-float Ki = 2.0f;
-float Kd = 0.5f;
+float Kp = 6.0f;
+float Ki = 1.5f;
+float Kd = 0.375f;
 const float integralMin = -5000.0f;
 const float integralMax = 5000.0f;
 float ItermAccum = 0.0f;
@@ -418,6 +421,15 @@ void initLineSensors() {
     qtr.calibrate();
   }
   digitalWrite(LED_BUILTIN, LOW);
+  Serial.println("Calibration minimum/maximum:");
+  for (int i = 0; i < LineSensorCount; i++) {
+    Serial.print(qtr.calibrationOn.minimum[i]);
+    Serial.print("/");
+    Serial.print(qtr.calibrationOn.maximum[i]);
+    Serial.print("  ");
+  }
+  Serial.println();
+
 }
 
 void startLineFollow() {
@@ -436,19 +448,19 @@ void stopLineFollow() {
 
 void lineFollowStep() {
   unsigned long now = millis();
-  const unsigned long minLoopMs = 50; // match working sketch PID interval
+  const unsigned long minLoopMs = 20; // match working sketch PID interval
   if (now - lastPidMs < minLoopMs) {
     return;
   }
   lastPidMs = now;
-  float dt = 0.05f; // fixed 50ms loop like working code
+  float dt = 0.02f; // fixed 50ms loop like working code
 
   updateLineSensors();
   static float filtError = 0.0f;
   int rawErr = invertLine ? ((int)linePosition - 3500) : (3500 - (int)linePosition); // target center of array (~3500)
   filtError = 0.7f * filtError + 0.3f * (float)rawErr; // simple low-pass
-  int error = (int)filtError;
-
+  //int error = (int)filtError; // original
+  int error = rawErr;  //comment to stop testing raw
   // Proportional
   float output;
   if (useSimpleLine) {
@@ -467,25 +479,25 @@ void lineFollowStep() {
     output = Pterm + Iterm + Dterm;
   }
 
-  const float deadband = 8.0f;
+  const float deadband = 3.0f;
   if (fabs(output) < deadband) output = 0.0f;
 
-  float maxCorrection = (float)lineBaseSpeed - (float)lineMinForward;
+  float maxCorrection = 120;
   if (maxCorrection < 0.0f) maxCorrection = 0.0f;
   if (output > maxCorrection) output = maxCorrection;
   if (output < -maxCorrection) output = -maxCorrection;
 
   float desiredLeftF = (float)lineBaseSpeed - output;
   float desiredRightF = (float)lineBaseSpeed + output;
-  desiredLeftF = constrain(desiredLeftF, (float)lineMinForward, 255.0f);
-  desiredRightF = constrain(desiredRightF, (float)lineMinForward, 255.0f);
+  desiredLeftF = constrain(desiredLeftF, (float)lineMinForward, 400.0f);
+  desiredRightF = constrain(desiredRightF, (float)lineMinForward, 400.0f);
 
   // Use raw motor commands to match working line-follow sketch (no bias)
   int lCmd = (int)desiredLeftF;
   int rCmd = (int)desiredRightF;
 
-  m.setM1Speed(lCmd); // match working sketch mapping (M1=left)
-  m.setM2Speed(rCmd); // M2=right
+  m.setM1Speed(rCmd); // swapping motors to check match working sketch mapping (M1=left)
+  m.setM2Speed(lCmd); // M2=right
 
   // Stop condition: front US within threshold
   float front = readUltrasonic(TRIG_FRONT, ECHO_FRONT);
@@ -496,7 +508,8 @@ void lineFollowStep() {
     stopHits = 0;
   }
   if (stopHits >= lineStopHitsRequired) {
-    stopLineFollow();
+    //stopLineFollow(); // comment out to test full line follow functionality
+
     stopHits = 0;
   }
 }
