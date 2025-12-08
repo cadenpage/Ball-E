@@ -464,42 +464,109 @@ try:
     #Phase 8: Robot is stopped and aligned to goal, we begin to read beacons, aim, and shoot
     print(f"[PHASE] Monitoring IR Beacon Telemetry & shooting system")
 
-    prev_detected = False  # Remember if beacon was detected last loop
+    #prev_detected = False  # Remember if beacon was detected last loop
     aim_servo = AngularServo(12, min_pulse_width=0.0005, max_pulse_width=0.0025, pin_factory=factory) # Define the actual servo w/ PWM values from spec sheet
     #Pin 12 will be used for aiming servo
     shoot_servo = AngularServo(13, min_pulse_width=0.0005, max_pulse_width=0.0025,pin_factory=factory) #"       "
     #Pin 13 will be used for shooting servo
     aim_servo.angle = 60  # Initial rest position for sensing
-    while SHOT_COUNT < 10:
-        states = read_beacons()
-        detected = any(states.values())  # Any IR beacon active?
+    SHOT_ARMED = True                 # ready to fire first shot
+    RELOAD_START = None               # when last shot finished
+    consecutive_detections = 0        # for debouncing the beacon
+    RELOAD_DELAY = 2.0          # seconds between shots (servo reset + feeder time)
+    REQUIRED_STABLE_READS = 3   # how many consecutive reads before trusting a beacon
+    POLL_DT = 0.05              # main shooting-loop dt (20 Hz)
 
-        # -------- SHOOT ONLY ON THE RISING EDGE --------
-        if detected and not prev_detected:
-            # New detection → fire once
+    while SHOT_COUNT < 10:
+        # ---- 1. Read IR beacons ----
+        states = read_beacons()
+        detected = any(states.values())
+
+        # ---- 2. Debounce: count consecutive detections ----
+        if detected:
+            consecutive_detections += 1
+        else:
+            consecutive_detections = 0
+
+        # ---- 3. If armed and beacon is stable, fire ONCE ----
+        if SHOT_ARMED and consecutive_detections >= REQUIRED_STABLE_READS:
             target_angle = choose_servo_angle(states)
             if target_angle is not None:
+                print(f"[AIM] Beacon states={states}, aiming to {target_angle}°")
+
+                # Aim slowly
                 move_slowly(aim_servo, target_angle)
-                time.sleep(2.0)
+                time.sleep(1.0)  # let servo settle a bit
 
                 # FIRE
+                print("[SHOOT] Firing")
                 shoot_servo.angle = FIRE_ANGLE
                 time.sleep(1.0)
                 shoot_servo.angle = REST_ANGLE
-                time.sleep(2.0)
+                time.sleep(0.5)
 
                 SHOT_COUNT += 1
-                time.sleep(2.0) # pause and load ball
-                FeederIndex()   # Advance feeder
-                time.sleep(1.0) # pause after feeding
-                move_slowly(aim_servo, 60)  # Reset to rest position
-
                 print(f"[SHOOT] Fired shot #{SHOT_COUNT}")
 
-        # update memory
-        prev_detected = detected
+                # Feed next ball
+                print("[FEED] Indexing feeder")
+                FeederIndex()
+                time.sleep(1.0)
 
-        time.sleep(0.5)
+                # Reset aim to sensing position
+                move_slowly(aim_servo, 60)
+                time.sleep(0.5)
+
+                # Disarm until reload delay has passed
+                SHOT_ARMED = False
+                RELOAD_START = time.time()
+                consecutive_detections = 0  # reset debounce after shooting
+
+        # ---- 4. Rearm after reload delay, regardless of beacon state ----
+        if not SHOT_ARMED and RELOAD_START is not None:
+            if (time.time() - RELOAD_START) >= RELOAD_DELAY:
+                print("[STATE] Rearming shooter for next shot")
+                SHOT_ARMED = True
+                # Note: if the beacon is still on, the next few iterations
+                # will see 'detected == True' and eventually trigger another shot.
+
+        # ---- 5. Loop timing ----
+        time.sleep(POLL_DT)
+
+
+
+    # while SHOT_COUNT < 10:
+    #     states = read_beacons()
+    #     detected = any(states.values())  # Any IR beacon active?
+
+    #     # -------- SHOOT ONLY ON THE RISING EDGE --------
+    #     if detected and not prev_detected:
+    #         # New detection → fire once
+    #         target_angle = choose_servo_angle(states)
+    #         if target_angle is not None:
+    #             move_slowly(aim_servo, target_angle)
+    #             time.sleep(2.0)
+
+    #             # FIRE
+    #             shoot_servo.angle = FIRE_ANGLE
+    #             time.sleep(1.0)
+    #             shoot_servo.angle = REST_ANGLE
+    #             time.sleep(2.0)
+
+    #             SHOT_COUNT += 1
+    #             time.sleep(2.0) # pause and load ball
+    #             FeederIndex()   # Advance feeder
+    #             time.sleep(1.0) # pause after feeding
+    #             move_slowly(aim_servo, 60)  # Reset to rest position
+
+    #             print(f"[SHOOT] Fired shot #{SHOT_COUNT}")
+        
+    #     prev_detected = detected
+    #     # update memory
+        
+
+    #     time.sleep(0.5)
+        
 
     # =================THIS IS WHAT I WROTE but im worried itll overcount shots so i added a debouncing version above^^ =====
     # while (SHOT_COUNT < 10): #10 total shots before being drunk
