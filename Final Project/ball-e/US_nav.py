@@ -58,8 +58,10 @@ TELEMETRY_TIMEOUT = 1.0     # seconds to wait for a telemetry line
 SPIN_SPEED = 45             # Motor speed for initial scan
 SEEK_SPIN_SPEED = 45        # Motor speed when re-seeking closest wall (slower to avoid overshoot)
 SCAN_DURATION = 8.0         # seconds to scan for closest wall (spin longer to sample more)
+ALIGN_SCAN_DURATION = 1.5    # seconds to scan for goal alignment
 MIN_HIT_TOL = 2.0           # cm tolerance around best distance
 SEEK_TIMEOUT = 10.0         # seconds while re-seeking the closest wall
+ALIGN_TIMEOUT = 10.0        # seconds while re-seeking the closest wall
 NEAR_HITS_REQUIRED = 8      # consecutive samples within tolerance to count as facing wall
 SETTLE_DELAY = 0.8          # seconds to pause after stopping a spin
 TURN_90_S = 0.9             # seconds for ~90° turn (tune)
@@ -98,8 +100,8 @@ STOP_FRONT_CM = 90        # stop distance if driving straight
 # Motor bias (tuned near comp day)
 LEFT_BIAS = 1.12
 RIGHT_BIAS = 1.0
-####################################################################
 
+####################################################################
 
 def log(msg):
     if VERBOSE:
@@ -251,7 +253,7 @@ def cmd_drive_to_front(stop_cm, speed):
 def cmd_invert_line(flag): 
     send_packet(ser, f"<I,{int(flag)}>")
 
-
+####################################################################
 
 print("Ball-E Control System Ready")
 setup_gpio()
@@ -282,6 +284,7 @@ ser.reset_input_buffer()
 # Apply initial bias
 cmd_bias(LEFT_BIAS, RIGHT_BIAS)
 
+####################################################################
 
 try:
     # Phase 1: spin scan to find min front distance
@@ -301,6 +304,8 @@ try:
         print("No front sensor data during scan; aborting.")
         raise SystemExit(1)
     print(f"[PHASE] Closest wall measured at ~{best_front:.2f} cm")
+
+####################################################################
 
     # Phase 2: spin again until near that minimum
     print("[PHASE] Seek closest wall again")
@@ -324,6 +329,8 @@ try:
     time.sleep(SETTLE_DELAY)
     print(f"[PHASE] Facing closest wall (front={last_good_f:.2f} cm, hits={near_hits}/{NEAR_HITS_REQUIRED})")
 
+####################################################################
+
     # Phase 3: classify side using left sensor (looking at right wall now)
     tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
     left_read = tele.get('left', float('nan')) if tele else float('nan')
@@ -338,6 +345,8 @@ try:
         position = "unknown"  # no valid side reading; default to driving
     print(f"[PHASE] Classified position: {position.upper()}")
 
+####################################################################
+
     # Phase 4: turn toward the center (left if on left side, right if on right)
     if position == "center":
         skip_drive = True
@@ -350,6 +359,8 @@ try:
     print(f"[PHASE] Turning { 'left' if turn_dir==-1 else 'right' } 90°")
     cmd_turn_deg(90 * turn_dir, TURN_SPEED)
     wait_until_idle(ser, timeout=6.0)
+
+####################################################################
 
     # Phase 5: drive toward centerline if not skipping
     if not skip_drive:
@@ -369,6 +380,8 @@ try:
         cmd_speed(0, 0)
         print(f"[PHASE] Centerline approach complete, front={last_front:.2f} cm")
 
+####################################################################
+
     # Phase 6: turn again to face away from back wall & Follow Line
     print(f"[PHASE] Turning { 'left' if turn_dir==-1 else 'right' } 90° to face away")
     cmd_turn_deg(90 * turn_dir, TURN_SPEED)
@@ -381,7 +394,74 @@ try:
         print("\nInitialization complete. Driving straight to stop distance...")
         cmd_drive_to_front(STOP_FRONT_CM, DRIVE_SPEED)
 
-    #Phase 7: Robot is stopped, we begin to read beacons, aim, and shoot
+####################################################################
+
+    #Phase 7: Sweep to find closest wall to align facing goal
+    print(f"[PHASE] Sweeping with LEFT sensor to find goal alignment")
+    best_front = float('inf')
+    spin_start = time.time()
+    cmd_speed(-SPIN_SPEED, SPIN_SPEED)  # spin left
+    while time.time() - spin_start < ALIGN_SCAN_DURATION:  # SWEEP LEFT
+        tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
+        if tele:
+            f = tele.get('left', float('inf'))
+            if f > 0 and f < best_front:
+                best_front = f
+    
+    cmd_speed(0, 0)
+    time.sleep(SETTLE_DELAY)
+    spin_start = time.time()
+    cmd_speed(SEEK_SPIN_SPEED, -SEEK_SPIN_SPEED)  # SWEEP RIGHT (symmetric)
+    while time.time() - spin_start < (2 * ALIGN_SCAN_DURATION):
+        tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
+        if tele:
+            f = tele.get('left', float('inf'))
+            if f > 0 and f < best_front:
+                best_front = f
+    cmd_speed(0, 0)
+    time.sleep(SETTLE_DELAY)
+    if best_front == float('inf'):
+        print("No LEFT sensor data during alignment sweep; aborting.")
+        raise SystemExit(1)
+    print(f"[PHASE] Closest side-wall (LEFT sensor) measured at ~{best_front:.2f} cm")
+
+    print("[PHASE] Seek closest side-wall again")
+    cmd_speed(-SEEK_SPIN_SPEED, SEEK_SPIN_SPEED)
+    near_hits = 0
+    seek_start = time.time()
+
+    last_good_f = float('inf')
+    while time.time() - seek_start < ALIGN_TIMEOUT and near_hits < NEAR_HITS_REQUIRED:
+        tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
+        if not tele:
+            continue
+        f = tele.get('left', float('nan'))
+        if not math.isfinite(f) or f <= 0:
+            continue  # ignore invalid readings
+        last_good_f = f
+        if f <= (best_front + MIN_HIT_TOL):
+            near_hits += 1
+        else:
+            near_hits = 0
+    cmd_speed(0, 0)
+    time.sleep(SETTLE_DELAY)
+    print(f"[PHASE] Facing closest side-wall (LEFT={last_good_f:.2f} cm, hits={near_hits}/{NEAR_HITS_REQUIRED})")
+
+
+####################################################################
+    #from slow_servo_test import move_slowly
+    def move_slowly(servo_obj, target_angle, step=2, delay=0.05):
+        current = servo_obj.angle or 0  # default to 0 if None
+        # decide direction
+        if target_angle > current:
+            angles = range(int(current), int(target_angle) + 1, step)
+        else:
+            angles = range(int(current), int(target_angle) - 1, -step)
+
+        for a in angles:
+            servo_obj.angle = a
+            time.sleep(delay)
+    #Phase 8: Robot is stopped and aligned to goal, we begin to read beacons, aim, and shoot
     print(f"[PHASE] Monitoring IR Beacon Telemetry & shooting system")
 
     prev_detected = False  # Remember if beacon was detected last loop
@@ -399,7 +479,7 @@ try:
             # New detection → fire once
             target_angle = choose_servo_angle(states)
             if target_angle is not None:
-                aim_servo.angle = target_angle
+                move_slowly(aim_servo, target_angle)
                 time.sleep(2.0)
 
                 # FIRE
@@ -412,7 +492,7 @@ try:
                 time.sleep(2.0) # pause and load ball
                 FeederIndex()   # Advance feeder
                 time.sleep(1.0) # pause after feeding
-                aim_servo.angle = 60  # Reset to rest position
+                move_slowly(aim_servo, 60)  # Reset to rest position
 
                 print(f"[SHOOT] Fired shot #{SHOT_COUNT}")
 
