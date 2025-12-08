@@ -10,10 +10,10 @@ servo2 = AngularServo(12, min_pulse_width=0.0005, max_pulse_width=0.0025, pin_fa
 
 while (True):
     servo2.angle = 0
-    # servo1.angle = -90
-    # sleep (2)
     servo1.angle = 90
-    # sleep(2)
+    sleep (2)
+    servo1.angle = -90
+    sleep(2)
 
 
 

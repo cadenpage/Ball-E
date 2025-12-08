@@ -2,7 +2,6 @@
 #include <AStar32U4Motors.h>
 #include <Encoder.h>
 #include <QTRSensors.h>
-// #include <Servo.h> not needed yay!!! i went ahead and commented servo shit off cuz im afraid to delete :)
 #include <math.h>
 AStar32U4Motors m;
 QTRSensors qtr;
@@ -52,7 +51,7 @@ const float countsPerCm = encoderResolution / (PI * wheelDiameterCm);
 float turnGain = 0.92f;                    // scale commanded degrees (1.0 = no scale; <1 reduces turn)
 
 // Bias and default speeds (tunable via commands)
-float leftBias = 1.00f;
+float leftBias = 1.1f;
 float rightBias = 1.0f;
 int leftMaxCmd = 400;   // per-motor command caps (tune if one wheel is stronger)
 int rightMaxCmd = 400;
@@ -60,17 +59,9 @@ int defaultDriveSpeed = 60;  // keep raw commands <= 60 for controlled motion
 int defaultTurnSpeed = 60;
 int lineBaseSpeed = 50;        // base forward speed for line follow (matches working sketch)
 const int lineMinForward = 50; // minimum forward that overcomes friction
-const float lineStopFrontCm = 65.0f; // stop line following when front US within this
+const float lineStopFrontCm = 74.0f; // stop line following when front US within this
 const int lineStopHitsRequired = 3;   // consecutive valid hits required to stop
 bool invertLine = false;   // set true if array is reversed (changes error sign)
-
-// Servo (feetech) control
-//const uint8_t SERVO_PIN = 9;     // Servo signal pin (use the same style as working sweep sketch)
-//Servo shooterServo;
-//int servoLeftUs = 1000;          // adjust for your left target
-//int servoMidUs = 1500;           // adjust for center
-//int servoRightUs = 2000;         // adjust for right target
-///unsigned long lastServoStepMs = 0;
 
 // Forward decls
 void recvWithStartEndMarkers();
@@ -89,7 +80,6 @@ void initLineSensors();
 void lineFollowStep();
 void startLineFollow();
 void stopLineFollow();
-//void setServoUs(int us);
 
 //=====================================================
 
@@ -108,10 +98,6 @@ void setup() {
 
     // Line sensor init and calibration
     initLineSensors();
-
-    // Servo init - no longer needed i think
-    //shooterServo.attach(SERVO_PIN);
-    //setServoUs(servoMidUs);
 
     Serial.println("<Arduino is ready>");
     delay(500);
@@ -266,21 +252,7 @@ void parseData(){
       int flag = atoi(iTok);
       invertLine = (flag != 0);
     }
-  } //else if (tok[0] == 'V') { // servo microseconds: V,us
-  //   char *uTok = strtok(NULL, ",");
-  //   if (uTok) {
-  //     int us = atoi(uTok);
-  //     setServoUs(us);
-  //   }
-  // }// else if (tok[0] == 'P') { // beacon aim preset: P,0/1/2 (left/mid/right)
-  //   char *bTok = strtok(NULL, ",");
-  //   if (bTok) {
-  //     int sel = atoi(bTok);
-  //     if (sel == 0) setServoUs(servoLeftUs);
-  //     else if (sel == 1) setServoUs(servoMidUs);
-  //     else if (sel == 2) setServoUs(servoRightUs);
-  //   }
-  // }
+  } 
     else if (tok[0] == 'H') { // halt
     leftMotor = 0;
     rightMotor = 0;
@@ -390,9 +362,9 @@ void driveUntilFront(float targetCm, int speed) {
 // ================== LINE FOLLOWING (from line_following_new_PID_CP) =========
 
 // PID parameters (match working line_following_new_PID_CP.ino)
-float Kp = 0.01f;
+float Kp = 0.02f;
 float Ki = 0.005f;
-float Kd = 0.001f; //.0005 rn
+float Kd = 0.002f; //.0005 rn
 const float integralMin = -5000.0f;
 const float integralMax = 5000.0f;
 float ItermAccum = 0.0f;
@@ -568,10 +540,4 @@ int applyRightBias(int cmd) {
   float scaled = cmd * rightBias;
   return (int)constrain((int)scaled, -rightMaxCmd, rightMaxCmd);
 }
-//========================================================= Commenting out all the stuff i think i was able to remove
-// // Servo helper
-// void setServoUs(int us) {
-//   // constrain to broad analog servo range; adjust if needed
-//   us = constrain(us, 500, 2500);
-//   shooterServo.writeMicroseconds(us);
-// }
+

@@ -8,10 +8,7 @@ import RPi.GPIO as GPIO
 from gpiozero.pins.pigpio import PiGPIOFactory
 factory = PiGPIOFactory()
 
-aim_servo = AngularServo(12, min_pulse_width=0.0005, max_pulse_width=0.0025, pin_factory=factory) # Define the actual servo w/ PWM values from spec sheet
-#Pin 12 will be used for aiming servo
-shoot_servo = AngularServo(13, min_pulse_width=0.0005, max_pulse_width=0.0025,pin_factory=factory) #"       "
-#Pin 13 will be used for shooting servo
+
 
 def send_packet(ser, packet, char_delay=0.0001):
     """Send a packet like <left,right>.
@@ -83,9 +80,9 @@ SERVO_LEFT = 1000
 SERVO_MID = 1500
 SERVO_RIGHT = 2000
 
-ANGLE_LEFT = 30
+ANGLE_LEFT = 34
 ANGLE_MID = 0
-ANGLE_RIGHT = -30
+ANGLE_RIGHT = -34
 
 REST_ANGLE = -90 #might be negative
 FIRE_ANGLE = 90 #Should deflect ruler and let go
@@ -261,8 +258,12 @@ def cmd_invert_line(flag):
 print("Ball-E Control System Ready")
 setup_gpio()
 print("GPIO ready (BCM mode)")
+aim_servo = AngularServo(12, min_pulse_width=0.0005, max_pulse_width=0.0025, pin_factory=factory) # Define the actual servo w/ PWM values from spec sheet
+#Pin 12 will be used for aiming servo
+shoot_servo = AngularServo(13, min_pulse_width=0.0005, max_pulse_width=0.0025,pin_factory=factory) #"       "
+#Pin 13 will be used for shooting servo
 aim_servo.angle = 0  # Initial rest position for sensing
-
+shoot_servo.angle = -90  # Initial rest position for shooting
 # Open serial port with modest timeouts and a write timeout
 ser = serial.Serial(portname, BAUD, timeout=0.5, write_timeout=3)
 
@@ -400,102 +401,7 @@ try:
         print("\nInitialization complete. Driving straight to stop distance...")
         cmd_drive_to_front(STOP_FRONT_CM, DRIVE_SPEED)
 
-# ####################################################################
-
-#     # Phase 7: spin scan to find min front distance
-    time.sleep(7.0)
-#     print("[PHASE] Spin scan for closest wall")
-#     best_front = float('inf')
-#     spin_start = time.time()
-#     cmd_speed(-SPIN_SPEED, SPIN_SPEED)  # spin left
-#     while time.time() - spin_start < SCAN_DURATION:
-#         tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
-#         if tele:
-#             f = tele.get('front', float('inf'))
-#             if f > 0 and f < best_front:
-#                 best_front = f
-#     cmd_speed(0, 0)
-#     time.sleep(SETTLE_DELAY)
-#     if best_front == float('inf'):
-#         print("No front sensor data during scan; aborting.")
-#         raise SystemExit(1)
-#     print(f"[PHASE] Closest wall measured at ~{best_front:.2f} cm")
-
-# ####################################################################
-
-#     # Phase 8: spin again until near that minimum
-#     print("[PHASE] Seek closest wall again")
-#     cmd_speed(-SEEK_SPIN_SPEED, SEEK_SPIN_SPEED)
-#     near_hits = 0
-#     seek_start = time.time()
-#     last_good_f = float('inf')
-#     while time.time() - seek_start < SEEK_TIMEOUT and near_hits < NEAR_HITS_REQUIRED:
-#         tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
-#         if not tele:
-#             continue
-#         f = tele.get('front', float('nan'))
-#         if not math.isfinite(f) or f <= 0:
-#             continue  # ignore invalid readings
-#         last_good_f = f
-#         if f <= (best_front + MIN_HIT_TOL):
-#             near_hits += 1
-#         else:
-#             near_hits = 0
-#     cmd_speed(0, 0)
-#     time.sleep(SETTLE_DELAY)
-#     print(f"[PHASE] Facing closest wall (front={last_good_f:.2f} cm, hits={near_hits}/{NEAR_HITS_REQUIRED})")
-
-
-    # #Phase 7: Sweep to find closest wall to align facing goal
-    # print(f"[PHASE] Sweeping with LEFT sensor to find goal alignment")
-    # best_front = float('inf')
-    # spin_start = time.time()
-    # cmd_speed(-SPIN_SPEED, SPIN_SPEED)  # spin left
-    # while time.time() - spin_start < ALIGN_SCAN_DURATION:  # SWEEP LEFT
-    #     tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
-    #     if tele:
-    #         f = tele.get('left', float('inf'))
-    #         if f > 0 and f < best_front:
-    #             best_front = f
-    
-    # cmd_speed(0, 0)
-    # time.sleep(SETTLE_DELAY)
-    # spin_start = time.time()
-    # cmd_speed(SEEK_SPIN_SPEED, -SEEK_SPIN_SPEED)  # SWEEP RIGHT (symmetric)
-    # while time.time() - spin_start < (2 * ALIGN_SCAN_DURATION):
-    #     tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
-    #     if tele:
-    #         f = tele.get('left', float('inf'))
-    #         if f > 0 and f < best_front:
-    #             best_front = f
-    # cmd_speed(0, 0)
-    # time.sleep(SETTLE_DELAY)
-    # if best_front == float('inf'):
-    #     print("No LEFT sensor data during alignment sweep; aborting.")
-    #     raise SystemExit(1)
-    # print(f"[PHASE] Closest side-wall (LEFT sensor) measured at ~{best_front:.2f} cm")
-
-    # print("[PHASE] Seek closest side-wall again")
-    # cmd_speed(-SEEK_SPIN_SPEED, SEEK_SPIN_SPEED)
-    # near_hits = 0
-    # seek_start = time.time()
-
-    # last_good_f = float('inf')
-    # while time.time() - seek_start < ALIGN_TIMEOUT and near_hits < NEAR_HITS_REQUIRED:
-    #     tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
-    #     if not tele:
-    #         continue
-    #     f = tele.get('left', float('nan'))
-    #     if not math.isfinite(f) or f <= 0:
-    #         continue  # ignore invalid readings
-    #     last_good_f = f
-    #     if f <= (best_front + MIN_HIT_TOL):
-    #         near_hits += 1
-    #     else:
-    #         near_hits = 0
-    # cmd_speed(0, 0)
-    # time.sleep(SETTLE_DELAY)
-    # print(f"[PHASE] Facing closest side-wall (LEFT={last_good_f:.2f} cm, hits={near_hits}/{NEAR_HITS_REQUIRED})")
+    time.sleep(10.0)
 
 
 ####################################################################
@@ -514,8 +420,6 @@ try:
     #Phase 8: Robot is stopped and aligned to goal, we begin to read beacons, aim, and shoot
     print(f"[PHASE] Monitoring IR Beacon Telemetry & shooting system")
 
-    #prev_detected = False  # Remember if beacon was detected last loop
-    
     
     SHOT_ARMED = True                 # ready to fire first shot
     RELOAD_START = None               # when last shot finished
@@ -579,61 +483,6 @@ try:
 
         # ---- 5. Loop timing ----
         time.sleep(POLL_DT)
-
-
-
-    # while SHOT_COUNT < 10:
-    #     states = read_beacons()
-    #     detected = any(states.values())  # Any IR beacon active?
-
-    #     # -------- SHOOT ONLY ON THE RISING EDGE --------
-    #     if detected and not prev_detected:
-    #         # New detection → fire once
-    #         target_angle = choose_servo_angle(states)
-    #         if target_angle is not None:
-    #             move_slowly(aim_servo, target_angle)
-    #             time.sleep(2.0)
-
-    #             # FIRE
-    #             shoot_servo.angle = FIRE_ANGLE
-    #             time.sleep(1.0)
-    #             shoot_servo.angle = REST_ANGLE
-    #             time.sleep(2.0)
-
-    #             SHOT_COUNT += 1
-    #             time.sleep(2.0) # pause and load ball
-    #             FeederIndex()   # Advance feeder
-    #             time.sleep(1.0) # pause after feeding
-    #             move_slowly(aim_servo, 60)  # Reset to rest position
-
-    #             print(f"[SHOOT] Fired shot #{SHOT_COUNT}")
-        
-    #     prev_detected = detected
-    #     # update memory
-        
-
-    #     time.sleep(0.5)
-        
-
-    # =================THIS IS WHAT I WROTE but im worried itll overcount shots so i added a debouncing version above^^ =====
-    # while (SHOT_COUNT < 10): #10 total shots before being drunk
-    #     states = read_beacons()
-    #     target_angle = choose_servo_angle(states)
-    #     if target_angle is not None:
-    #         aim_servo.angle = target_angle
-    #         # print(f"[BEACON] Detected states L/M/R = {states}, aiming servo to {target_angle}°")
-    #         time.sleep(2.0)  # Pause to allow servo to reach position
-    #         # ===== Activate shooting servo ==========
-    #         # print("[SHOOT] Activating shooting servo")
-    #         shoot_servo.angle = FIRE_ANGLE  # Move to shoot position
-    #         time.sleep(1.0)         # Hold position briefly
-    #         shoot_servo.angle = REST_ANGLE    # Return to rest position
-    #         time.sleep(3.0)         # Allow time to return
-    #         SHOT_COUNT += 1
-    #     else:
-    #         print(f"[BEACON] No beacon detected; returning to home")
-
-    #     time.sleep(0.5)  # Polling interval
 
 
     # Keep the script alive to monitor until the robot reports idle
