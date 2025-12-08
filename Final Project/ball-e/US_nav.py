@@ -98,7 +98,7 @@ USE_LINE_FOLLOW = True      # True => use line following, False => drive straigh
 STOP_FRONT_CM = 90        # stop distance if driving straight
 
 # Motor bias (tuned near comp day)
-LEFT_BIAS = 1.12
+LEFT_BIAS = 1.0
 RIGHT_BIAS = 1.0
 
 ####################################################################
@@ -366,7 +366,7 @@ try:
     if not skip_drive:
         print("[PHASE] Driving toward centerline...")
         drive_start = time.time()
-        cmd_speed(DRIVE_SPEED, DRIVE_SPEED)
+        cmd_speed(DRIVE_SPEED, DRIVE_SPEED*1.2)
         last_front = float('inf')
         target_center = max(0.0, HALF_DISTANCE - CENTER_NUDGE_CM)
         while time.time() - drive_start < DRIVE_TIMEOUT:
@@ -397,6 +397,7 @@ try:
 ####################################################################
 
     # Phase 7: spin scan to find min front distance
+    time.sleep(7.0)
     print("[PHASE] Spin scan for closest wall")
     best_front = float('inf')
     spin_start = time.time()

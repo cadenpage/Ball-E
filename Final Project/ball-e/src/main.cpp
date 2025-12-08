@@ -4,7 +4,6 @@
 #include <QTRSensors.h>
 // #include <Servo.h> not needed yay!!! i went ahead and commented servo shit off cuz im afraid to delete :)
 #include <math.h>
-
 AStar32U4Motors m;
 QTRSensors qtr;
 
@@ -35,7 +34,7 @@ unsigned long lastTelemetryMillis = 0;
 float lastFrontDist = -1.0f;
 float lastLeftDist = -1.0f;
 bool actionActive = false;
-bool lineFollowActive = false;
+bool lineFollowActive = true;
 
 // Encoder + geometry (from lab template)
 const int encoderRightPinA = 15;
@@ -53,7 +52,7 @@ const float countsPerCm = encoderResolution / (PI * wheelDiameterCm);
 float turnGain = 0.92f;                    // scale commanded degrees (1.0 = no scale; <1 reduces turn)
 
 // Bias and default speeds (tunable via commands)
-float leftBias = 1.12f;
+float leftBias = 1.00f;
 float rightBias = 1.0f;
 int leftMaxCmd = 400;   // per-motor command caps (tune if one wheel is stronger)
 int rightMaxCmd = 400;
@@ -61,7 +60,7 @@ int defaultDriveSpeed = 60;  // keep raw commands <= 60 for controlled motion
 int defaultTurnSpeed = 60;
 int lineBaseSpeed = 90;        // base forward speed for line follow (matches working sketch)
 const int lineMinForward = 60; // minimum forward that overcomes friction
-const float lineStopFrontCm = 90.0f; // stop line following when front US within this
+const float lineStopFrontCm = 65.0f; // stop line following when front US within this
 const int lineStopHitsRequired = 3;   // consecutive valid hits required to stop
 bool invertLine = false;   // set true if array is reversed (changes error sign)
 
@@ -396,9 +395,9 @@ void driveUntilFront(float targetCm, int speed) {
 // ================== LINE FOLLOWING (from line_following_new_PID_CP) =========
 
 // PID parameters (match working line_following_new_PID_CP.ino)
-float Kp = 1.0f;
-float Ki = 2.0f;
-float Kd = 0.5f;
+float Kp = 9.0f;
+float Ki = 4.0f;
+float Kd = 0.2f;
 const float integralMin = -5000.0f;
 const float integralMax = 5000.0f;
 float ItermAccum = 0.0f;
@@ -484,8 +483,8 @@ void lineFollowStep() {
   int lCmd = (int)desiredLeftF;
   int rCmd = (int)desiredRightF;
 
-  m.setM1Speed(lCmd); // match working sketch mapping (M1=left)
-  m.setM2Speed(rCmd); // M2=right
+  m.setM1Speed(rCmd); // match working sketch mapping (M1=left)
+  m.setM2Speed(lCmd); // M2=right
 
   // Stop condition: front US within threshold
   float front = readUltrasonic(TRIG_FRONT, ECHO_FRONT);
