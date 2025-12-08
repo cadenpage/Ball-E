@@ -58,8 +58,8 @@ int leftMaxCmd = 400;   // per-motor command caps (tune if one wheel is stronger
 int rightMaxCmd = 400;
 int defaultDriveSpeed = 60;  // keep raw commands <= 60 for controlled motion
 int defaultTurnSpeed = 60;
-int lineBaseSpeed = 90;        // base forward speed for line follow (matches working sketch)
-const int lineMinForward = 60; // minimum forward that overcomes friction
+int lineBaseSpeed = 50;        // base forward speed for line follow (matches working sketch)
+const int lineMinForward = 50; // minimum forward that overcomes friction
 const float lineStopFrontCm = 65.0f; // stop line following when front US within this
 const int lineStopHitsRequired = 3;   // consecutive valid hits required to stop
 bool invertLine = false;   // set true if array is reversed (changes error sign)
@@ -176,11 +176,6 @@ float readUltrasonic(int trigPin, int echoPin) {
 void updateLineSensors() {
   // Read sensors (emitters on during read), remove low noise
   linePosition = qtr.readLineBlack(lineSensorValues, QTRReadMode::On);
-  for (int i = 0; i < LineSensorCount; i++) {
-    if (lineSensorValues[i] < 300) {
-      lineSensorValues[i] = 0;
-    }
-  }
 }
 
 //======================================================
@@ -395,9 +390,9 @@ void driveUntilFront(float targetCm, int speed) {
 // ================== LINE FOLLOWING (from line_following_new_PID_CP) =========
 
 // PID parameters (match working line_following_new_PID_CP.ino)
-float Kp = 9.0f;
-float Ki = 4.0f;
-float Kd = 0.2f;
+float Kp = 0.01f;
+float Ki = 0.005f;
+float Kd = 0.001f; //.0005 rn
 const float integralMin = -5000.0f;
 const float integralMax = 5000.0f;
 float ItermAccum = 0.0f;
@@ -417,6 +412,17 @@ void initLineSensors() {
     qtr.calibrate();
   }
   digitalWrite(LED_BUILTIN, LOW);
+
+  Serial.println("Calibration results:");
+  for (int i = 0; i < LineSensorCount; i++) {
+    Serial.print("Sensor ");
+    Serial.print(i);
+    Serial.print(": min=");
+    Serial.print(qtr.calibrationOn.minimum[i]);
+    Serial.print(" max=");
+    Serial.println(qtr.calibrationOn.maximum[i]);
+  }
+Serial.println();
 }
 
 void startLineFollow() {
@@ -435,18 +441,19 @@ void stopLineFollow() {
 
 void lineFollowStep() {
   unsigned long now = millis();
-  const unsigned long minLoopMs = 50; // match working sketch PID interval
+  const unsigned long minLoopMs = 10; // match working sketch PID interval
   if (now - lastPidMs < minLoopMs) {
     return;
   }
   lastPidMs = now;
-  float dt = 0.05f; // fixed 50ms loop like working code
+  float dt = 0.01f; // fixed 50ms loop like working code
 
   updateLineSensors();
-  static float filtError = 0.0f;
-  int rawErr = invertLine ? ((int)linePosition - 3500) : (3500 - (int)linePosition); // target center of array (~3500)
-  filtError = 0.7f * filtError + 0.3f * (float)rawErr; // simple low-pass
-  int error = (int)filtError;
+  // Corrected error sign after fixing motor mapping
+  int rawErr = (int)linePosition - 3500;
+  if (invertLine) rawErr = -rawErr; // target center of array (~3500)
+
+  int error = rawErr; //test raw for now
 
   // Proportional
   float output;
@@ -466,18 +473,18 @@ void lineFollowStep() {
     output = Pterm + Iterm + Dterm;
   }
 
-  const float deadband = 8.0f;
+  const float deadband = 1.0f;
   if (fabs(output) < deadband) output = 0.0f;
 
-  float maxCorrection = (float)lineBaseSpeed - (float)lineMinForward;
+  float maxCorrection = 180; // arbitrary max for correction
   if (maxCorrection < 0.0f) maxCorrection = 0.0f;
   if (output > maxCorrection) output = maxCorrection;
   if (output < -maxCorrection) output = -maxCorrection;
 
   float desiredLeftF = (float)lineBaseSpeed - output;
   float desiredRightF = (float)lineBaseSpeed + output;
-  desiredLeftF = constrain(desiredLeftF, (float)lineMinForward, 255.0f);
-  desiredRightF = constrain(desiredRightF, (float)lineMinForward, 255.0f);
+  desiredLeftF = constrain(desiredLeftF, (float)lineMinForward, 400.0f);
+  desiredRightF = constrain(desiredRightF, (float)lineMinForward, 400.0f);
 
   // Use raw motor commands to match working line-follow sketch (no bias)
   int lCmd = (int)desiredLeftF;

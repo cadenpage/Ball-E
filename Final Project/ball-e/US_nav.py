@@ -8,7 +8,10 @@ import RPi.GPIO as GPIO
 from gpiozero.pins.pigpio import PiGPIOFactory
 factory = PiGPIOFactory()
 
-
+aim_servo = AngularServo(12, min_pulse_width=0.0005, max_pulse_width=0.0025, pin_factory=factory) # Define the actual servo w/ PWM values from spec sheet
+#Pin 12 will be used for aiming servo
+shoot_servo = AngularServo(13, min_pulse_width=0.0005, max_pulse_width=0.0025,pin_factory=factory) #"       "
+#Pin 13 will be used for shooting servo
 
 def send_packet(ser, packet, char_delay=0.0001):
     """Send a packet like <left,right>.
@@ -95,7 +98,7 @@ STEPPER_PINS = (22, 23, 24, 25) # [STEPPER1, STEPPER2, STEPPER3, STEPPER4]
 
 # Post-init behavior
 USE_LINE_FOLLOW = True      # True => use line following, False => drive straight to 56 cm
-STOP_FRONT_CM = 90        # stop distance if driving straight
+STOP_FRONT_CM = 65        # stop distance if driving straight
 
 # Motor bias (tuned near comp day)
 LEFT_BIAS = 1.0
@@ -258,6 +261,7 @@ def cmd_invert_line(flag):
 print("Ball-E Control System Ready")
 setup_gpio()
 print("GPIO ready (BCM mode)")
+aim_servo.angle = 0  # Initial rest position for sensing
 
 # Open serial port with modest timeouts and a write timeout
 ser = serial.Serial(portname, BAUD, timeout=0.5, write_timeout=3)
@@ -271,7 +275,7 @@ ser.setRTS(True)
 
 # Give it time to reboot and flush any startup text
 print("Resetting Arduino...")
-time.sleep(1.0)
+# time.sleep(1.0)
 ser.reset_input_buffer()
 
 print("Waiting for Arduino telemetry...")
@@ -359,6 +363,7 @@ try:
     print(f"[PHASE] Turning { 'left' if turn_dir==-1 else 'right' } 90°")
     cmd_turn_deg(90 * turn_dir, TURN_SPEED)
     wait_until_idle(ser, timeout=6.0)
+    time.sleep(SETTLE_DELAY)
 
 ####################################################################
 
@@ -366,7 +371,7 @@ try:
     if not skip_drive:
         print("[PHASE] Driving toward centerline...")
         drive_start = time.time()
-        cmd_speed(DRIVE_SPEED, DRIVE_SPEED*1.2)
+        cmd_speed(DRIVE_SPEED, DRIVE_SPEED)
         last_front = float('inf')
         target_center = max(0.0, HALF_DISTANCE - CENTER_NUDGE_CM)
         while time.time() - drive_start < DRIVE_TIMEOUT:
@@ -378,6 +383,7 @@ try:
             if last_front <= (target_center + DIST_TOL):
                 break
         cmd_speed(0, 0)
+        time.sleep(SETTLE_DELAY)
         print(f"[PHASE] Centerline approach complete, front={last_front:.2f} cm")
 
 ####################################################################
@@ -394,50 +400,52 @@ try:
         print("\nInitialization complete. Driving straight to stop distance...")
         cmd_drive_to_front(STOP_FRONT_CM, DRIVE_SPEED)
 
-####################################################################
+# ####################################################################
 
-    # Phase 7: spin scan to find min front distance
+#     # Phase 7: spin scan to find min front distance
     time.sleep(7.0)
-    print("[PHASE] Spin scan for closest wall")
-    best_front = float('inf')
-    spin_start = time.time()
-    cmd_speed(-SPIN_SPEED, SPIN_SPEED)  # spin left
-    while time.time() - spin_start < SCAN_DURATION:
-        tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
-        if tele:
-            f = tele.get('front', float('inf'))
-            if f > 0 and f < best_front:
-                best_front = f
-    cmd_speed(0, 0)
-    time.sleep(SETTLE_DELAY)
-    if best_front == float('inf'):
-        print("No front sensor data during scan; aborting.")
-        raise SystemExit(1)
-    print(f"[PHASE] Closest wall measured at ~{best_front:.2f} cm")
+#     print("[PHASE] Spin scan for closest wall")
+#     best_front = float('inf')
+#     spin_start = time.time()
+#     cmd_speed(-SPIN_SPEED, SPIN_SPEED)  # spin left
+#     while time.time() - spin_start < SCAN_DURATION:
+#         tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
+#         if tele:
+#             f = tele.get('front', float('inf'))
+#             if f > 0 and f < best_front:
+#                 best_front = f
+#     cmd_speed(0, 0)
+#     time.sleep(SETTLE_DELAY)
+#     if best_front == float('inf'):
+#         print("No front sensor data during scan; aborting.")
+#         raise SystemExit(1)
+#     print(f"[PHASE] Closest wall measured at ~{best_front:.2f} cm")
 
-####################################################################
+# ####################################################################
 
-    # Phase 8: spin again until near that minimum
-    print("[PHASE] Seek closest wall again")
-    cmd_speed(-SEEK_SPIN_SPEED, SEEK_SPIN_SPEED)
-    near_hits = 0
-    seek_start = time.time()
-    last_good_f = float('inf')
-    while time.time() - seek_start < SEEK_TIMEOUT and near_hits < NEAR_HITS_REQUIRED:
-        tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
-        if not tele:
-            continue
-        f = tele.get('front', float('nan'))
-        if not math.isfinite(f) or f <= 0:
-            continue  # ignore invalid readings
-        last_good_f = f
-        if f <= (best_front + MIN_HIT_TOL):
-            near_hits += 1
-        else:
-            near_hits = 0
-    cmd_speed(0, 0)
-    time.sleep(SETTLE_DELAY)
-    print(f"[PHASE] Facing closest wall (front={last_good_f:.2f} cm, hits={near_hits}/{NEAR_HITS_REQUIRED})")
+#     # Phase 8: spin again until near that minimum
+#     print("[PHASE] Seek closest wall again")
+#     cmd_speed(-SEEK_SPIN_SPEED, SEEK_SPIN_SPEED)
+#     near_hits = 0
+#     seek_start = time.time()
+#     last_good_f = float('inf')
+#     while time.time() - seek_start < SEEK_TIMEOUT and near_hits < NEAR_HITS_REQUIRED:
+#         tele = read_latest_telemetry(ser, timeout=TELEMETRY_TIMEOUT)
+#         if not tele:
+#             continue
+#         f = tele.get('front', float('nan'))
+#         if not math.isfinite(f) or f <= 0:
+#             continue  # ignore invalid readings
+#         last_good_f = f
+#         if f <= (best_front + MIN_HIT_TOL):
+#             near_hits += 1
+#         else:
+#             near_hits = 0
+#     cmd_speed(0, 0)
+#     time.sleep(SETTLE_DELAY)
+#     print(f"[PHASE] Facing closest wall (front={last_good_f:.2f} cm, hits={near_hits}/{NEAR_HITS_REQUIRED})")
+
+
     # #Phase 7: Sweep to find closest wall to align facing goal
     # print(f"[PHASE] Sweeping with LEFT sensor to find goal alignment")
     # best_front = float('inf')
@@ -507,11 +515,8 @@ try:
     print(f"[PHASE] Monitoring IR Beacon Telemetry & shooting system")
 
     #prev_detected = False  # Remember if beacon was detected last loop
-    aim_servo = AngularServo(12, min_pulse_width=0.0005, max_pulse_width=0.0025, pin_factory=factory) # Define the actual servo w/ PWM values from spec sheet
-    #Pin 12 will be used for aiming servo
-    shoot_servo = AngularServo(13, min_pulse_width=0.0005, max_pulse_width=0.0025,pin_factory=factory) #"       "
-    #Pin 13 will be used for shooting servo
-    aim_servo.angle = 60  # Initial rest position for sensing
+    
+    
     SHOT_ARMED = True                 # ready to fire first shot
     RELOAD_START = None               # when last shot finished
     consecutive_detections = 0        # for debouncing the beacon
@@ -556,8 +561,8 @@ try:
                 time.sleep(1.0)
 
                 # Reset aim to sensing position
-                move_slowly(aim_servo, 60)
-                time.sleep(0.5)
+                # move_slowly(aim_servo, 60)
+                # time.sleep(0.5)
 
                 # Disarm until reload delay has passed
                 SHOT_ARMED = False
