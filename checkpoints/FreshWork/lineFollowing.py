@@ -2,7 +2,7 @@
 import serial
 import time
 import numpy as np
-from sendStringScript import sendString
+from minimal.sendStringScript import sendString
 leftMotor=int(10)
 rightMotor=int(10)
 MID = 3600
